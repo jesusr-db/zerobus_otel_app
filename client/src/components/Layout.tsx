@@ -1,15 +1,18 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { TimeRangeSelector } from './TimeRangeSelector';
 import { ServiceDetailPanel } from './ServiceDetailPanel';
+import { TraceDetailPanel } from './TraceDetailPanel';
 import { useServiceContext } from '../contexts/ServiceContext';
 import { useTimeRange } from '../contexts/TimeRangeContext';
 
 interface LayoutProps {
   children: ReactNode;
+  selectedTrace: string | null;
+  setSelectedTrace: (traceId: string | null) => void;
 }
 
-export function Layout({ children }: LayoutProps) {
+export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProps) {
   const location = useLocation();
   const { selectedService, setSelectedService } = useServiceContext();
   const { timeRange, setTimeRange } = useTimeRange();
@@ -18,6 +21,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/', label: 'Dashboard' },
     { path: '/map', label: 'Dependency Map' },
     { path: '/services', label: 'Services' },
+    { path: '/traces', label: 'Traces' },
   ];
 
   return (
@@ -71,6 +75,13 @@ export function Layout({ children }: LayoutProps) {
             serviceName={selectedService}
             timeRange={timeRange}
             onClose={() => setSelectedService(null)}
+          />
+        )}
+
+        {selectedTrace && (
+          <TraceDetailPanel
+            traceId={selectedTrace}
+            onClose={() => setSelectedTrace(null)}
           />
         )}
       </div>

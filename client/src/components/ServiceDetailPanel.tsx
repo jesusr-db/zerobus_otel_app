@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -351,6 +352,7 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
                 </CardContent>
               </Card>
             )}
+
           </>
         )}
       </div>

@@ -30,7 +30,7 @@ async def get_services(
     interval, seconds = get_time_range_interval(time_range)
     
     query = f"""
-    WITH service_spans AS (
+    WITH current_spans AS (
       SELECT 
         span.service_name,
         span.duration_ms,
@@ -40,7 +40,16 @@ async def get_services(
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval}
     ),
-    service_metrics AS (
+    baseline_spans AS (
+      SELECT 
+        span.service_name,
+        span.duration_ms
+      FROM jmr_demo.zerobus.traces_assembled_silver t
+      LATERAL VIEW explode(span_details) AS span
+      WHERE t.trace_start >= NOW() - INTERVAL {interval} * 2
+        AND t.trace_start < NOW() - INTERVAL {interval}
+    ),
+    current_metrics AS (
       SELECT
         service_name,
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
@@ -50,27 +59,36 @@ async def get_services(
         MAX(duration_ms) as max_duration,
         SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
         COUNT(*) as request_count
-      FROM service_spans
+      FROM current_spans
+      GROUP BY service_name
+    ),
+    baseline_metrics AS (
+      SELECT
+        service_name,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
+        COUNT(*) / {seconds} as baseline_rps
+      FROM baseline_spans
       GROUP BY service_name
     )
     SELECT 
-      service_name,
-      latency_p50 as current_latency_p50,
-      latency_p95 as current_latency_p95,
-      latency_p99 as current_latency_p99,
-      avg_duration as avg_duration_ms,
-      max_duration as max_duration_ms,
-      error_count,
-      request_count,
-      CAST(error_count AS FLOAT) / NULLIF(request_count, 0) as error_rate,
-      request_count / {seconds} as requests_per_second,
+      c.service_name,
+      c.latency_p50 as current_latency_p50,
+      c.latency_p95 as current_latency_p95,
+      c.latency_p99 as current_latency_p99,
+      c.avg_duration as avg_duration_ms,
+      c.max_duration as max_duration_ms,
+      c.error_count,
+      c.request_count,
+      CAST(c.error_count AS FLOAT) / NULLIF(c.request_count, 0) as error_rate,
+      c.request_count / {seconds} as requests_per_second,
       CASE 
-        WHEN CAST(error_count AS FLOAT) / NULLIF(request_count, 0) > 0.05 THEN 'critical'
-        WHEN CAST(error_count AS FLOAT) / NULLIF(request_count, 0) > 0.01 THEN 'warning'
+        WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
+        WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
         ELSE 'healthy'
       END as health_status
-    FROM service_metrics
-    ORDER BY request_count DESC
+    FROM current_metrics c
+    LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
+    ORDER BY c.request_count DESC
     """
     
     try:
@@ -201,18 +219,50 @@ async def get_service_dependencies(
     warehouse_manager = WarehouseManager(user_token=user_token)
     
     query = f"""
-    WITH service_health AS (
+    WITH current_spans AS (
       SELECT 
         span.service_name,
-        CASE 
-          WHEN CAST(SUM(CASE WHEN span.is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) > 0.05 THEN 'critical'
-          WHEN CAST(SUM(CASE WHEN span.is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) > 0.01 THEN 'warning'
-          ELSE 'healthy'
-        END as health_status
+        span.duration_ms,
+        t.trace_start
       FROM jmr_demo.zerobus.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL 1 HOUR
-      GROUP BY span.service_name
+    ),
+    baseline_spans AS (
+      SELECT 
+        span.service_name,
+        span.duration_ms
+      FROM jmr_demo.zerobus.traces_assembled_silver t
+      LATERAL VIEW explode(span_details) AS span
+      WHERE t.trace_start >= NOW() - INTERVAL 2 HOUR
+        AND t.trace_start < NOW() - INTERVAL 1 HOUR
+    ),
+    current_metrics AS (
+      SELECT
+        service_name,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
+        COUNT(*) as request_count
+      FROM current_spans
+      GROUP BY service_name
+    ),
+    baseline_metrics AS (
+      SELECT
+        service_name,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
+        COUNT(*) / 3600 as baseline_rps
+      FROM baseline_spans
+      GROUP BY service_name
+    ),
+    service_health AS (
+      SELECT 
+        c.service_name,
+        CASE 
+          WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
+          WHEN c.request_count / 3600 > COALESCE(b.baseline_rps, c.request_count / 3600) THEN 'warning'
+          ELSE 'healthy'
+        END as health_status
+      FROM current_metrics c
+      LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
     ),
     inbound_deps AS (
       SELECT 
@@ -285,4 +335,90 @@ async def get_service_dependencies(
         )
     except Exception as e:
         logger.error(f"Dependencies query failed for {service_name}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+
+@router.get("/{service_name}/traces")
+async def get_service_traces(
+    request: Request,
+    service_name: str,
+    time_range: TimeRange = Query(default="1h", description="Time range for traces")
+):
+    from server.models.observability import TraceInfo
+    
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+    warehouse_manager = WarehouseManager(user_token=user_token)
+    interval, seconds = get_time_range_interval(time_range)
+    
+    query = f"""
+    SELECT 
+      trace_id,
+      trace_start,
+      services_involved,
+      total_trace_duration_ms as total_duration_ms,
+      span_count
+    FROM jmr_demo.zerobus.traces_assembled_silver
+    WHERE array_contains(services_involved, '{service_name}')
+      AND trace_start >= NOW() - INTERVAL {interval}
+    ORDER BY trace_start DESC
+    LIMIT 100
+    """
+    
+    try:
+        results = warehouse_manager.execute_query(query)
+        if not results:
+            logger.info(f"No traces found for service: {service_name}")
+            return []
+        
+        return [TraceInfo(**row) for row in results]
+    except Exception as e:
+        logger.error(f"Traces query failed for {service_name}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+
+@router.get("/traces/{trace_id}")
+async def get_trace_detail(
+    request: Request,
+    trace_id: str
+):
+    from server.models.observability import TraceDetail, SpanDetail
+    
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+    warehouse_manager = WarehouseManager(user_token=user_token)
+    
+    trace_query = f"""
+    SELECT 
+      trace_id,
+      trace_start
+    FROM jmr_demo.zerobus.traces_assembled_silver
+    WHERE trace_id = '{trace_id}'
+    LIMIT 1
+    """
+    
+    spans_query = f"""
+    SELECT 
+      service_name,
+      SUM(duration_ms) as total_duration_ms
+    FROM jmr_demo.zerobus.traces_silver
+    WHERE trace_id = '{trace_id}'
+    GROUP BY service_name
+    ORDER BY total_duration_ms DESC
+    """
+    
+    try:
+        trace_results = warehouse_manager.execute_query(trace_query)
+        if not trace_results:
+            raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
+        
+        spans_results = warehouse_manager.execute_query(spans_query)
+        
+        return TraceDetail(
+            trace_id=trace_results[0]['trace_id'],
+            trace_start=trace_results[0]['trace_start'],
+            spans=[SpanDetail(**row) for row in spans_results]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Trace detail query failed for {trace_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")

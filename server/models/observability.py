@@ -78,3 +78,22 @@ class WarehouseInfo(BaseModel):
     warehouse_id: str
     warehouse_name: str
     status: str
+
+
+class TraceInfo(BaseModel):
+    trace_id: str
+    trace_start: str
+    services_involved: List[str]
+    total_duration_ms: float
+    span_count: int
+
+
+class SpanDetail(BaseModel):
+    service_name: str
+    total_duration_ms: float
+
+
+class TraceDetail(BaseModel):
+    trace_id: str
+    trace_start: str
+    spans: List[SpanDetail]

@@ -27,28 +27,56 @@ async def get_dependency_graph(
     interval, seconds = get_time_range_interval(time_range)
     
     query = f"""
-    WITH service_spans AS (
+    WITH current_spans AS (
       SELECT 
         span.service_name,
+        span.duration_ms,
         span.is_error,
         t.trace_start
       FROM jmr_demo.zerobus.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval}
     ),
-    service_health AS (
+    baseline_spans AS (
+      SELECT 
+        span.service_name,
+        span.duration_ms
+      FROM jmr_demo.zerobus.traces_assembled_silver t
+      LATERAL VIEW explode(span_details) AS span
+      WHERE t.trace_start >= NOW() - INTERVAL {interval} * 2
+        AND t.trace_start < NOW() - INTERVAL {interval}
+    ),
+    current_metrics AS (
       SELECT
         service_name,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
         SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
         COUNT(*) as request_count,
-        CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
+        CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate
+      FROM current_spans
+      GROUP BY service_name
+    ),
+    baseline_metrics AS (
+      SELECT
+        service_name,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
+        COUNT(*) / {seconds} as baseline_rps
+      FROM baseline_spans
+      GROUP BY service_name
+    ),
+    service_health AS (
+      SELECT
+        c.service_name,
+        c.error_count,
+        c.request_count,
+        c.error_rate,
         CASE 
-          WHEN CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) > 0.05 THEN 'critical'
-          WHEN CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) > 0.01 THEN 'warning'
+          WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
+          WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
           ELSE 'healthy'
         END as health_status
-      FROM service_spans
-      GROUP BY service_name
+      FROM current_metrics c
+      LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
     ),
     all_services AS (
       SELECT DISTINCT source_service as service_name FROM jmr_demo.zerobus.service_dependencies
