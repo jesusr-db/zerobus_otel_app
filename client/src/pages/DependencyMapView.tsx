@@ -1,13 +1,12 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ServiceGraph } from '../components/ServiceGraph';
-import { TimeRangeSelector } from '../components/TimeRangeSelector';
 import { useServiceContext } from '../contexts/ServiceContext';
-import { DependencyGraph, TimeRange } from '../types/observability';
+import { useTimeRange } from '../contexts/TimeRangeContext';
+import { DependencyGraph } from '../types/observability';
 import { apiClient } from '../fastapi_client';
 
 export function DependencyMapView() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const { timeRange } = useTimeRange();
   const { setSelectedService } = useServiceContext();
 
   const { data, isLoading, error } = useQuery<DependencyGraph>({
@@ -30,14 +29,11 @@ export function DependencyMapView() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Service Dependency Map</h2>
-          <p className="text-sm text-muted-foreground">
-            Visualize service relationships and health status
-          </p>
-        </div>
-        <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-foreground">Service Dependency Map</h2>
+        <p className="text-sm text-muted-foreground">
+          Visualize service relationships and health status
+        </p>
       </div>
 
       {isLoading && (

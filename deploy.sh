@@ -203,9 +203,9 @@ print_timing "Starting requirements generation"
 echo "📦 Generating requirements.txt..."
 if [ "$VERBOSE" = true ]; then
   echo "Using custom script to avoid editable installs..."
-  uv run python scripts/generate_semver_requirements.py
+  pyenv shell intakeApp && uv run python scripts/generate_semver_requirements.py
 else
-  uv run python scripts/generate_semver_requirements.py
+  pyenv shell intakeApp && uv run python scripts/generate_semver_requirements.py
 fi
 print_timing "Requirements generation completed"
 

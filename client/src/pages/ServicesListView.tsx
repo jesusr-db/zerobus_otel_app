@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { TimeRangeSelector } from '../components/TimeRangeSelector';
-import { ServiceHealth, TimeRange } from '../types/observability';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ServiceHealth } from '../types/observability';
 import { useServiceContext } from '../contexts/ServiceContext';
+import { useTimeRange } from '../contexts/TimeRangeContext';
+
+type SortField = 'service_name' | 'health_status' | 'current_latency_p50' | 'current_latency_p95' | 'current_latency_p99' | 'error_rate' | 'request_count' | 'requests_per_second';
+type SortOrder = 'asc' | 'desc';
 
 export function ServicesListView() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const { timeRange } = useTimeRange();
   const { setSelectedService } = useServiceContext();
+  const [sortField, setSortField] = useState<SortField>('request_count');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const { data: services, isLoading, error } = useQuery<ServiceHealth[]>({
     queryKey: ['services', timeRange],
@@ -24,6 +30,44 @@ export function ServicesListView() {
     refetchInterval: 30000,
   });
 
+  const sortedServices = useMemo(() => {
+    if (!services) return [];
+    
+    const sorted = [...services].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal as string).toLowerCase();
+      }
+      
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  }, [services, sortField, sortOrder]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4 opacity-50" />;
+    }
+    return sortOrder === 'asc' ? 
+      <ArrowUp className="h-4 w-4" /> : 
+      <ArrowDown className="h-4 w-4" />;
+  };
+
   const getHealthBadge = (status: string) => {
     const colors = {
       critical: 'bg-destructive text-destructive-foreground',
@@ -35,14 +79,11 @@ export function ServicesListView() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Services List</h2>
-          <p className="text-sm text-muted-foreground">
-            All services with performance metrics
-          </p>
-        </div>
-        <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-foreground">Services List</h2>
+        <p className="text-sm text-muted-foreground">
+          All services with performance metrics
+        </p>
       </div>
 
       {isLoading && (
@@ -66,18 +107,82 @@ export function ServicesListView() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Service</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Status</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">P50 Latency</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">P95 Latency</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">P99 Latency</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">Error Rate</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">Requests</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">RPS</th>
+                  <th 
+                    className="px-4 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('service_name')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Service
+                      {getSortIcon('service_name')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-left text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('health_status')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Status
+                      {getSortIcon('health_status')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('current_latency_p50')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      P50 Latency
+                      {getSortIcon('current_latency_p50')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('current_latency_p95')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      P95 Latency
+                      {getSortIcon('current_latency_p95')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('current_latency_p99')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      P99 Latency
+                      {getSortIcon('current_latency_p99')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('error_rate')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Error Rate
+                      {getSortIcon('error_rate')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('request_count')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Requests
+                      {getSortIcon('request_count')}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-4 py-3 text-right text-sm font-semibold text-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSort('requests_per_second')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      RPS
+                      {getSortIcon('requests_per_second')}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {services.map((service) => (
+                {sortedServices.map((service) => (
                   <tr
                     key={service.service_name}
                     className="border-b border-border hover:bg-accent/50 cursor-pointer transition-colors"

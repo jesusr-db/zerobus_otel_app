@@ -1,5 +1,9 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { TimeRangeSelector } from './TimeRangeSelector';
+import { ServiceDetailPanel } from './ServiceDetailPanel';
+import { useServiceContext } from '../contexts/ServiceContext';
+import { useTimeRange } from '../contexts/TimeRangeContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -7,6 +11,8 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const { selectedService, setSelectedService } = useServiceContext();
+  const { timeRange, setTimeRange } = useTimeRange();
 
   const navItems = [
     { path: '/', label: 'Dashboard' },
@@ -48,6 +54,7 @@ export function Layout({ children }: LayoutProps) {
               Real-time service monitoring
             </div>
             <div className="flex items-center gap-4">
+              <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
               <div className="text-xs text-muted-foreground">
                 Auto-refresh: 30s
               </div>
@@ -58,6 +65,14 @@ export function Layout({ children }: LayoutProps) {
             {children}
           </main>
         </div>
+
+        {selectedService && (
+          <ServiceDetailPanel
+            serviceName={selectedService}
+            timeRange={timeRange}
+            onClose={() => setSelectedService(null)}
+          />
+        )}
       </div>
     </div>
   );

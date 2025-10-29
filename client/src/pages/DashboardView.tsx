@@ -1,12 +1,11 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { TimeRangeSelector } from '../components/TimeRangeSelector';
-import { ServiceHealth, TimeRange } from '../types/observability';
+import { ServiceHealth } from '../types/observability';
 import { useServiceContext } from '../contexts/ServiceContext';
+import { useTimeRange } from '../contexts/TimeRangeContext';
 
 export function DashboardView() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const { timeRange } = useTimeRange();
   const { setSelectedService } = useServiceContext();
 
   const { data: services, isLoading, error } = useQuery<ServiceHealth[]>({
@@ -40,14 +39,11 @@ export function DashboardView() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Service Health Dashboard</h2>
-          <p className="text-sm text-muted-foreground">
-            Monitor service health and performance metrics
-          </p>
-        </div>
-        <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-foreground">Service Health Dashboard</h2>
+        <p className="text-sm text-muted-foreground">
+          Monitor service health and performance metrics
+        </p>
       </div>
 
       {isLoading && (
