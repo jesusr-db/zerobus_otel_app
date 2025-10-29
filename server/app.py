@@ -1,6 +1,7 @@
 """FastAPI application for Databricks App Template."""
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,6 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from server.routers import router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 # Load environment variables from .env.local if it exists
@@ -44,7 +51,13 @@ app = FastAPI(
 
 app.add_middleware(
   CORSMiddleware,
-  allow_origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
+  allow_origins=[
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    '*'
+  ],
   allow_credentials=True,
   allow_methods=['*'],
   allow_headers=['*'],

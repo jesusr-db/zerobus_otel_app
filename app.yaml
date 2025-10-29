@@ -2,3 +2,9 @@ command: [
   "uvicorn",
   "server.app:app"
 ]
+
+resources:
+  - name: warehouse
+    sql_warehouse:
+      auto_detect: true
+      permission: CAN_USE
