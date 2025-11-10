@@ -30,7 +30,6 @@ class WarehouseManager:
             logger.error(f"Failed to initialize WorkspaceClient: {e}")
             raise
         self._warehouse_id: Optional[str] = None
-        self.user_token = user_token
 
     def _auto_detect_warehouse(self) -> str:
         warehouse_id = os.getenv("DATABRICKS_WAREHOUSE_ID")
@@ -69,32 +68,11 @@ class WarehouseManager:
             warehouse_id = self.get_warehouse_id()
             logger.info(f"Executing query on warehouse: {warehouse_id}")
             
-            if self.user_token:
-                host = os.getenv("DATABRICKS_HOST")
-                saved_client_id = os.environ.pop("DATABRICKS_CLIENT_ID", None)
-                saved_client_secret = os.environ.pop("DATABRICKS_CLIENT_SECRET", None)
-                
-                try:
-                    user_config = Config(host=host, token=self.user_token)
-                    user_client = WorkspaceClient(config=user_config)
-                    logger.info("Using user token for SQL query execution")
-                finally:
-                    if saved_client_id:
-                        os.environ["DATABRICKS_CLIENT_ID"] = saved_client_id
-                    if saved_client_secret:
-                        os.environ["DATABRICKS_CLIENT_SECRET"] = saved_client_secret
-                
-                statement = user_client.statement_execution.execute_statement(
-                    warehouse_id=warehouse_id,
-                    statement=query,
-                    wait_timeout="30s"
-                )
-            else:
-                statement = self.client.statement_execution.execute_statement(
-                    warehouse_id=warehouse_id,
-                    statement=query,
-                    wait_timeout="30s"
-                )
+            statement = self.client.statement_execution.execute_statement(
+                warehouse_id=warehouse_id,
+                statement=query,
+                wait_timeout="30s"
+            )
             
             if statement.status.state != StatementState.SUCCEEDED:
                 error_message = statement.status.error.message if statement.status.error else "Unknown error"
