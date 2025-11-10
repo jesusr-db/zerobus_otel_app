@@ -71,7 +71,12 @@ class WarehouseManager:
             
             if self.user_token:
                 host = os.getenv("DATABRICKS_HOST")
-                user_config = Config(host=host, token=self.user_token)
+                user_config = Config(
+                    host=host,
+                    token=self.user_token,
+                    client_id=None,
+                    client_secret=None
+                )
                 user_client = WorkspaceClient(config=user_config)
                 logger.info("Using user token for SQL query execution")
                 
