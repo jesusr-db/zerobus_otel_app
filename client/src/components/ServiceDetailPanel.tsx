@@ -36,7 +36,6 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
       }
       return response.json();
     },
-    refetchInterval: 30000,
     enabled: !!serviceName,
   });
 
@@ -51,7 +50,6 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
       }
       return response.json();
     },
-    refetchInterval: 30000,
     enabled: !!serviceName,
   });
 

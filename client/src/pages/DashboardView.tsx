@@ -21,7 +21,6 @@ export function DashboardView() {
       }
       return response.json();
     },
-    refetchInterval: 30000,
   });
 
   const getHealthColor = (status: string) => {

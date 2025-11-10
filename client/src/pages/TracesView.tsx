@@ -29,7 +29,6 @@ export function TracesView({ onTraceClick }: TracesViewProps) {
       }
       return response.json();
     },
-    refetchInterval: 30000,
   });
 
   const { data: serviceTraces, isLoading: serviceTracesLoading } = useQuery<TraceInfo[]>({
@@ -43,7 +42,6 @@ export function TracesView({ onTraceClick }: TracesViewProps) {
       }
       return response.json();
     },
-    refetchInterval: 30000,
     enabled: !!selectedService,
   });
 

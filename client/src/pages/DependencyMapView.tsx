@@ -20,7 +20,6 @@ export function DependencyMapView() {
       }
       return response.json();
     },
-    refetchInterval: 30000,
   });
 
   const handleNodeClick = (serviceId: string) => {
