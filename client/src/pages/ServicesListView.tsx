@@ -100,7 +100,18 @@ export function ServicesListView() {
         </div>
       )}
 
-      {services && (
+      {services && services.length === 0 && !isLoading && (
+        <div className="flex h-full items-center justify-center">
+          <div className="max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
+            <div className="text-foreground font-semibold mb-2">No recent data</div>
+            <div className="text-sm text-muted-foreground">
+              No service activity found in the selected time range. Try selecting a longer time range.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {services && services.length > 0 && (
         <div className="rounded-lg border border-border bg-card">
           <div className="overflow-x-auto">
             <table className="w-full">

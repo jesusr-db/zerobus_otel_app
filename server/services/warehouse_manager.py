@@ -71,7 +71,7 @@ class WarehouseManager:
             statement = self.client.statement_execution.execute_statement(
                 warehouse_id=warehouse_id,
                 statement=query,
-                wait_timeout="30s"
+                wait_timeout="50s"
             )
             
             if statement.status.state != StatementState.SUCCEEDED:

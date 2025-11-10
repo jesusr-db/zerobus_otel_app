@@ -47,7 +47,18 @@ export function DependencyMapView() {
         </div>
       )}
 
-      {data && (
+      {data && data.nodes.length === 0 && !isLoading && (
+        <div className="flex h-full items-center justify-center">
+          <div className="max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
+            <div className="text-foreground font-semibold mb-2">No recent data</div>
+            <div className="text-sm text-muted-foreground">
+              No service activity found in the selected time range. Try selecting a longer time range.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data && data.nodes.length > 0 && (
         <div className="flex-1 rounded-lg border border-border bg-card">
           <ServiceGraph data={data} onNodeClick={handleNodeClick} />
         </div>
