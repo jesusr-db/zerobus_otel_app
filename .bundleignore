@@ -1,0 +1,63 @@
+# Development and tooling
+.env*
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node/Frontend development
+node_modules/
+client/node_modules/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Helper scripts (not needed for runtime)
+setup.sh
+watch.sh
+fix.sh
+deploy.sh
+app_status.sh
+dba_client.py
+dba_logz.py
+
+# Documentation
+docs/
+README.md
+*.md
+!CLAUDE.md
+
+# Tests
+tests/
+*_test.py
+pytest.ini
+
+# Claude-generated scripts
+claude_scripts/
+
+# Build artifacts
+client/build/
+requirements.txt
+
+# Databricks Apps config (using bundle instead)
+app.yaml

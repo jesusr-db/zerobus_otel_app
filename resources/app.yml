@@ -1,0 +1,12 @@
+resources:
+  apps:
+    o11y_jmr_app:
+      name: o11y-jmr
+      description: Observability dashboard for distributed tracing and service metrics
+      source_code_path: ${workspace.file_path}
+      
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

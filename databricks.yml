@@ -1,0 +1,22 @@
+bundle:
+  name: o11y-jmr
+
+include:
+  - resources/*.yml
+
+variables:
+  warehouse_id:
+    description: SQL Warehouse ID for the app
+    default: "5067b513037fbf07"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.service_principal_name}
