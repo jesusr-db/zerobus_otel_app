@@ -3,6 +3,7 @@ from typing import Literal
 import logging
 from server.models.observability import TraceInfo
 from server.services.warehouse_manager import WarehouseManager
+from server.config import OBSERVABILITY_TABLE_PREFIX
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,7 +36,7 @@ async def get_all_traces(
       services_involved,
       total_trace_duration_ms as total_duration_ms,
       span_count
-    FROM jmr_demo.zerobus.traces_assembled_silver
+    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
     WHERE trace_start >= NOW() - INTERVAL {interval}
     ORDER BY trace_start DESC
     LIMIT 100

@@ -3,6 +3,12 @@ command: [
   "server.app:app"
 ]
 
+env:
+  - name: OBSERVABILITY_CATALOG
+    value: jmr_demo
+  - name: OBSERVABILITY_SCHEMA
+    value: zerobus_dev
+
 resources:
   - name: warehouse
     sql_warehouse:

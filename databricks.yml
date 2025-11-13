@@ -8,6 +8,12 @@ variables:
   warehouse_id:
     description: SQL Warehouse ID for the app
     default: "5067b513037fbf07"
+  catalog:
+    description: Databricks catalog name for observability data
+    default: "jmr_demo"
+  schema:
+    description: Databricks schema name for observability data
+    default: "zerobus_dev"
 
 targets:
   dev:

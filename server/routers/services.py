@@ -36,7 +36,7 @@ async def get_services(
         span.duration_ms,
         span.is_error,
         t.trace_start
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval}
     ),
@@ -44,7 +44,7 @@ async def get_services(
       SELECT 
         span.service_name,
         span.duration_ms
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval} * 2
         AND t.trace_start < NOW() - INTERVAL {interval}
@@ -119,7 +119,7 @@ async def get_service_metrics(
         span.duration_ms,
         span.is_error,
         t.trace_start
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE span.service_name = '{service_name}'
         AND t.trace_start >= NOW() - INTERVAL {interval}
@@ -143,7 +143,7 @@ async def get_service_metrics(
         span.duration_ms,
         span.is_error,
         date_trunc('minute', t.trace_start) as time_bucket
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE span.service_name = '{service_name}'
         AND t.trace_start >= NOW() - INTERVAL {interval}
@@ -164,7 +164,7 @@ async def get_service_metrics(
       SELECT 
         span.duration_ms,
         span.is_error
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE span.service_name = '{service_name}'
         AND t.trace_start >= NOW() - INTERVAL {interval} * 2
@@ -270,7 +270,7 @@ async def get_service_dependencies(
         d.source_service as related_service,
         d.call_count,
         COALESCE(h.health_status, 'unknown') as health_status
-      FROM jmr_demo.zerobus.service_dependencies d
+      FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
       LEFT JOIN service_health h ON d.source_service = h.service_name
       WHERE d.target_service = '{service_name}'
     ),
@@ -280,7 +280,7 @@ async def get_service_dependencies(
         d.target_service as related_service,
         d.call_count,
         COALESCE(h.health_status, 'unknown') as health_status
-      FROM jmr_demo.zerobus.service_dependencies d
+      FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
       LEFT JOIN service_health h ON d.target_service = h.service_name
       WHERE d.source_service = '{service_name}'
     )
@@ -357,7 +357,7 @@ async def get_service_traces(
       services_involved,
       total_trace_duration_ms as total_duration_ms,
       span_count
-    FROM jmr_demo.zerobus.traces_assembled_silver
+    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
     WHERE array_contains(services_involved, '{service_name}')
       AND trace_start >= NOW() - INTERVAL {interval}
     ORDER BY trace_start DESC
@@ -390,7 +390,7 @@ async def get_trace_detail(
     SELECT 
       trace_id,
       trace_start
-    FROM jmr_demo.zerobus.traces_assembled_silver
+    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
     WHERE trace_id = '{trace_id}'
     LIMIT 1
     """
@@ -399,7 +399,7 @@ async def get_trace_detail(
     SELECT 
       service_name,
       SUM(duration_ms) as total_duration_ms
-    FROM jmr_demo.zerobus.traces_silver
+    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_silver
     WHERE trace_id = '{trace_id}'
     GROUP BY service_name
     ORDER BY total_duration_ms DESC
