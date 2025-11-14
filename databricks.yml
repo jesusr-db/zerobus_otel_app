@@ -8,6 +8,12 @@ variables:
   warehouse_id:
     description: SQL Warehouse ID for the app
     default: "5067b513037fbf07"
+  catalog_name:
+    description: Catalog name for observability tables
+    default: "jmr_demo"
+  schema_name:
+    description: Schema name for observability tables
+    default: "zerobus"
 
 targets:
   dev:

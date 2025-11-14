@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Literal
 from server.models.observability import DependencyGraph, GraphNode, GraphEdge
 from server.services.warehouse_manager import WarehouseManager
+from server.config import OBSERVABILITY_TABLE_PREFIX
 
 router = APIRouter()
 
@@ -32,7 +33,7 @@ async def get_dependency_graph(
         span.duration_ms,
         span.is_error,
         t.trace_start
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval}
     ),
@@ -40,7 +41,7 @@ async def get_dependency_graph(
       SELECT 
         span.service_name,
         span.duration_ms
-      FROM jmr_demo.zerobus.traces_assembled_silver t
+      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
       LATERAL VIEW explode(span_details) AS span
       WHERE t.trace_start >= NOW() - INTERVAL {interval} * 2
         AND t.trace_start < NOW() - INTERVAL {interval}
@@ -78,9 +79,9 @@ async def get_dependency_graph(
       LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
     ),
     all_services AS (
-      SELECT DISTINCT source_service as service_name FROM jmr_demo.zerobus.service_dependencies
+      SELECT DISTINCT source_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies
       UNION
-      SELECT DISTINCT target_service as service_name FROM jmr_demo.zerobus.service_dependencies
+      SELECT DISTINCT target_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies
     )
     SELECT 
       'node' as row_type,
@@ -105,7 +106,7 @@ async def get_dependency_graph(
       d.source_service as source,
       d.target_service as target,
       d.call_count as callCount
-    FROM jmr_demo.zerobus.service_dependencies d
+    FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
     """
     
     try:
