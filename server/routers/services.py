@@ -8,12 +8,11 @@ from server.config import OBSERVABILITY_TABLE_PREFIX
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-TimeRange = Literal["15m", "1h", "24h"]
+TimeRange = Literal["1h", "24h"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
     intervals = {
-        "15m": ("15 MINUTE", 900),
         "1h": ("1 HOUR", 3600),
         "24h": ("24 HOUR", 86400),
     }

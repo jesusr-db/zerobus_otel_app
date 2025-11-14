@@ -1,11 +1,10 @@
 interface TimeRangeSelectorProps {
-  value: '15m' | '1h' | '24h';
-  onChange: (value: '15m' | '1h' | '24h') => void;
+  value: '1h' | '24h';
+  onChange: (value: '1h' | '24h') => void;
 }
 
 export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
   const options = [
-    { value: '15m' as const, label: '15 minutes' },
     { value: '1h' as const, label: '1 hour' },
     { value: '24h' as const, label: '24 hours' },
   ];
