@@ -124,15 +124,15 @@ async def get_service_metrics(
         AND t.trace_start >= NOW() - INTERVAL {interval}
     )
     SELECT
-      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as latency_p95,
-      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as latency_p99,
-      AVG(duration_ms) as avg_duration_ms,
-      MAX(duration_ms) as max_duration_ms,
-      SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
-      CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
-      COUNT(*) as request_count,
-      COUNT(*) / {seconds} as requests_per_second
+      COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
+      COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p95,
+      COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p99,
+      COALESCE(AVG(duration_ms), 0.0) as avg_duration_ms,
+      COALESCE(MAX(duration_ms), 0.0) as max_duration_ms,
+      COALESCE(SUM(CASE WHEN is_error THEN 1 ELSE 0 END), 0) as error_count,
+      COALESCE(CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0), 0.0) as error_rate,
+      COALESCE(COUNT(*), 0) as request_count,
+      COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
     FROM service_spans
     """
     
@@ -170,15 +170,15 @@ async def get_service_metrics(
         AND t.trace_start < NOW() - INTERVAL {interval}
     )
     SELECT
-      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as latency_p95,
-      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as latency_p99,
-      AVG(duration_ms) as avg_duration_ms,
-      MAX(duration_ms) as max_duration_ms,
-      SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
-      CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
-      COUNT(*) as request_count,
-      COUNT(*) / {seconds} as requests_per_second
+      COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
+      COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p95,
+      COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p99,
+      COALESCE(AVG(duration_ms), 0.0) as avg_duration_ms,
+      COALESCE(MAX(duration_ms), 0.0) as max_duration_ms,
+      COALESCE(SUM(CASE WHEN is_error THEN 1 ELSE 0 END), 0) as error_count,
+      COALESCE(CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0), 0.0) as error_rate,
+      COALESCE(COUNT(*), 0) as request_count,
+      COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
     FROM service_spans
     """
     
