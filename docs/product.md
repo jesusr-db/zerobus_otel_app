@@ -200,6 +200,10 @@ A modern, dark-themed observability dashboard that provides:
 - Dark theme refinement
 
 ### Future Enhancements (Post-MVP)
+- Convert to Lakebase data source
+- Convert to streaming data pipeline
+- Create panel with waterfall visualization of trace and spans (with times)
+- Log and span views
 - Custom time range picker
 - Service health alerting
 - Log integration and viewing
