@@ -296,4 +296,5 @@ mlartifacts/
 # Generated client
 client/src/client/
 
+# App configuration (contains environment-specific settings and tokens)
 app.yml
