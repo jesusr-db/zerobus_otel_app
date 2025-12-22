@@ -1,0 +1,26 @@
+command: [
+  "uvicorn",
+  "server.app:app"
+]
+
+env:
+  - name: CATALOG_NAME
+    value: jmr_demo
+  - name: SCHEMA_NAME
+    value: zerobus_sdp
+  - name: DATABRICKS_HOST
+    value: https://xxxx.cloud.databricks.com
+  - name: OTEL_TOKEN
+    value: dapixxxx
+  - name: OTEL_TRACES_TABLE
+    value: <catalog>.<schema>.otel_spans
+  - name: OTEL_METRICS_TABLE
+    value: <catalog>.<schema>.otel_metrics
+  - name: OTEL_LOGS_TABLE
+    value: <catalog>.<schema>.otel_logs
+
+resources:
+  - name: warehouse
+    sql_warehouse:
+      auto_detect: true
+      permission: CAN_USE

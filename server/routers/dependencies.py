@@ -6,13 +6,14 @@ from server.config import OBSERVABILITY_TABLE_PREFIX
 
 router = APIRouter()
 
-TimeRange = Literal["1h", "24h"]
+TimeRange = Literal["1h", "24h", "1M"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
     intervals = {
         "1h": ("1 HOUR", 3600),
         "24h": ("24 HOUR", 86400),
+        "1M": ("30 DAY", 2592000),
     }
     return intervals[time_range]
 

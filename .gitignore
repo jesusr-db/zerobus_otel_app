@@ -295,3 +295,5 @@ mlartifacts/
 
 # Generated client
 client/src/client/
+
+app.yml

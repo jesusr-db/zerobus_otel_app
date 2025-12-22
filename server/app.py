@@ -5,18 +5,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry import trace
 
 from server.routers import router
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
+from server.tracing import setup_tracing
 
 # Load environment variables from .env.local if it exists
 def load_env_file(filepath: str) -> None:
@@ -31,9 +27,23 @@ def load_env_file(filepath: str) -> None:
             os.environ[key] = value
 
 
-# Load .env files
+# Load .env files BEFORE setting up tracing
 load_env_file('.env')
 load_env_file('.env.local')
+
+logging.basicConfig(
+  level=logging.INFO,
+  format='%(asctime)s [%(levelname)s] [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+# Setup tracing AFTER loading env vars
+try:
+  setup_tracing()
+  logger.info('OpenTelemetry tracing initialized successfully')
+except Exception as e:
+  logger.warning(f'Failed to initialize OpenTelemetry: {e}')
+  logger.warning('Continuing without OpenTelemetry instrumentation')
 
 
 @asynccontextmanager
@@ -48,6 +58,24 @@ app = FastAPI(
   version='0.1.0',
   lifespan=lifespan,
 )
+
+# Instrument FastAPI app with OpenTelemetry
+FastAPIInstrumentor.instrument_app(app)
+logger.info('FastAPI instrumented with OpenTelemetry')
+
+
+# Add custom middleware to verify span creation
+@app.middleware('http')
+async def trace_middleware(request: Request, call_next):
+  tracer = trace.get_tracer(__name__)
+  with tracer.start_as_current_span(f'{request.method} {request.url.path}') as span:
+    span.set_attribute('http.method', request.method)
+    span.set_attribute('http.url', str(request.url))
+    logger.debug(f'Created span for {request.method} {request.url.path}')
+    response = await call_next(request)
+    span.set_attribute('http.status_code', response.status_code)
+    return response
+
 
 app.add_middleware(
   CORSMiddleware,
@@ -69,6 +97,7 @@ app.include_router(router, prefix='/api', tags=['api'])
 @app.get('/health')
 async def health():
   """Health check endpoint."""
+  logger.info('Health check endpoint called')
   return {'status': 'healthy'}
 
 
