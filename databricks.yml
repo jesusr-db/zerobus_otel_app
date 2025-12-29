@@ -13,7 +13,7 @@ variables:
     default: "jmr_demo"
   schema_name:
     description: Schema name for observability tables
-    default: "zerobus"
+    default: "zerobus_sdp"
 
 targets:
   dev:

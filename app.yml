@@ -7,7 +7,7 @@ env:
   - name: CATALOG_NAME
     value: jmr_demo
   - name: SCHEMA_NAME
-    value: zerobus_dev
+    value: zerobus_sdp
 
 resources:
   - name: warehouse
