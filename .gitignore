@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+
+# App configuration (contains environment-specific settings and tokens)
+app.yml
+
+
 # Distribution / packaging
 .Python
 develop-eggs/
@@ -296,5 +301,5 @@ mlartifacts/
 # Generated client
 client/src/client/
 
-# App configuration (contains environment-specific settings and tokens)
-app.yml
+
+
