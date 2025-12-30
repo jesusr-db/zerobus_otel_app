@@ -3,7 +3,8 @@ from typing import Literal
 import logging
 from server.models.observability import TraceInfo
 from server.services.warehouse_manager import WarehouseManager
-from server.config import OBSERVABILITY_TABLE_PREFIX
+from server.services.lakebase_manager import LakebaseManager
+from server.config import OBSERVABILITY_TABLE_PREFIX, DATA_BACKEND
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,24 +26,39 @@ async def get_all_traces(
     time_range: TimeRange = Query(default="1h", description="Time range for traces")
 ):
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    warehouse_manager = WarehouseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
     
-    query = f"""
-    SELECT 
-      trace_id,
-      trace_start,
-      services_involved,
-      total_trace_duration_ms as total_duration_ms,
-      span_count
-    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
-    WHERE trace_start >= NOW() - INTERVAL {interval}
-    ORDER BY trace_start DESC
-    LIMIT 100
-    """
+    if DATA_BACKEND == "lakebase":
+        data_manager = LakebaseManager(user_token=user_token)
+        query = f"""
+        SELECT 
+          trace_id,
+          trace_start,
+          services_involved,
+          total_trace_duration_ms as total_duration_ms,
+          span_count
+        FROM zerobus_sdp.traces_assembled_synced
+        WHERE trace_start >= NOW() - INTERVAL '{interval}'
+        ORDER BY trace_start DESC
+        LIMIT 100
+        """
+    else:
+        data_manager = WarehouseManager(user_token=user_token)
+        query = f"""
+        SELECT 
+          trace_id,
+          trace_start,
+          services_involved,
+          total_trace_duration_ms as total_duration_ms,
+          span_count
+        FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
+        WHERE trace_start >= NOW() - INTERVAL {interval}
+        ORDER BY trace_start DESC
+        LIMIT 100
+        """
     
     try:
-        results = warehouse_manager.execute_query(query)
+        results = data_manager.execute_query(query)
         if not results:
             logger.info("No traces found")
             return []

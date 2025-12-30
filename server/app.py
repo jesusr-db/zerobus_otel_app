@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from server.routers import router
+from server.routers import lakebase_validation
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for detailed validation logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix='/api', tags=['api'])
+app.include_router(lakebase_validation.router, prefix='/api', tags=['validation'])
 
 
 @app.get('/health')

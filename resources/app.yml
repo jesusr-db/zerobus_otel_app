@@ -2,7 +2,7 @@ resources:
   apps:
     o11y_jmr_app:
       name: o11y-jmr
-      description: Observability dashboard for distributed tracing and service metrics
+      description: Observability dashboard for distributed tracing and service metrics (Lakebase backend)
       source_code_path: ${workspace.file_path}
       
       resources:
@@ -10,3 +10,9 @@ resources:
           sql_warehouse:
             id: ${var.warehouse_id}
             permission: CAN_USE
+        - name: database
+          description: "Databricks serving endpoint name for the AI agent"
+          database:
+            database_name: zerobus_sdp
+            instance_name: zerobus-dev
+            permission: CAN_CONNECT_AND_CREATE
