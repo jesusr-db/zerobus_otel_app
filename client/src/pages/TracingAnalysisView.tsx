@@ -59,18 +59,20 @@ export function TracingAnalysisView() {
     retry: 1,
   });
 
-  const { data: waterfallData, isLoading: waterfallLoading } = useQuery<TraceWaterfall>({
+  const { data: waterfallData, isLoading: waterfallLoading, error: waterfallError } = useQuery<TraceWaterfall>({
     queryKey: ['trace-waterfall', selectedTraceId],
     queryFn: async () => {
       const response = await fetch(`/api/traces/waterfall/${selectedTraceId}`, {
         credentials: 'include',
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch trace waterfall');
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || 'Failed to fetch trace waterfall');
       }
       return response.json();
     },
     enabled: !!selectedTraceId,
+    retry: 1,
   });
 
   const filteredTraces = selectedService
@@ -263,7 +265,13 @@ export function TracingAnalysisView() {
             </div>
           )}
 
-          {selectedTraceId && waterfallData && (
+          {selectedTraceId && waterfallError && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-red-500">Error loading waterfall: {waterfallError.message}</div>
+            </div>
+          )}
+
+          {selectedTraceId && !waterfallLoading && !waterfallError && waterfallData && (
             <div>
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-foreground mb-2">

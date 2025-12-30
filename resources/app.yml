@@ -11,7 +11,7 @@ resources:
             id: ${var.warehouse_id}
             permission: CAN_USE
         - name: database
-          description: "Databricks serving endpoint name for the AI agent"
+          description: "Databricks serving endpoint name for app"
           database:
             database_name: zerobus_sdp
             instance_name: zerobus-dev

@@ -90,17 +90,10 @@ async def get_trace_waterfall(
         """
         
         spans_query = f"""
-        SELECT 
-          span_id,
-          parent_span_id,
-          name,
-          service_name,
-          start_time_unix_nano,
-          end_time_unix_nano,
-          attributes
+        SELECT *
         FROM zerobus_sdp.traces_silver_synced
         WHERE trace_id = '{trace_id}'
-        ORDER BY start_time_unix_nano ASC
+        LIMIT 1
         """
     else:
         data_manager = WarehouseManager(user_token=user_token)
@@ -130,15 +123,26 @@ async def get_trace_waterfall(
         """
     
     try:
+        logger.info(f"Fetching waterfall for trace: {trace_id}")
         assembled_results = data_manager.execute_query(assembled_query)
         if not assembled_results:
+            logger.warning(f"Trace not found: {trace_id}")
             raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
         
         trace_data = assembled_results[0]
+        logger.info(f"Trace found: {trace_data.get('trace_id')}, querying spans...")
         
-        spans_results = data_manager.execute_query(spans_query)
+        try:
+            spans_results = data_manager.execute_query(spans_query)
+            logger.info(f"Retrieved {len(spans_results) if spans_results else 0} spans")
+            if spans_results and len(spans_results) > 0:
+                logger.info(f"Available columns in traces_silver_synced: {list(spans_results[0].keys())}")
+        except Exception as span_query_error:
+            logger.error(f"Span query failed, falling back to span_details: {span_query_error}")
+            spans_results = None
         
-        if spans_results and len(spans_results) > 0:
+        if spans_results and len(spans_results) > 0 and 'start_time_unix_nano' in spans_results[0]:
+            # Use detailed span timing data
             trace_start_nano = min(s['start_time_unix_nano'] for s in spans_results)
             
             spans = []

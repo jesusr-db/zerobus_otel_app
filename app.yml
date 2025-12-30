@@ -19,7 +19,7 @@ env:
   - name: LAKEBASE_SCHEMA_NAME
     value: zerobus_sdp
   - name: LAKEBASE_HOST
-    value: instance-6125d6d9-44a4-46b7-a5ff-6db65cbf60c5.database.cloud.databricks.com
+    value: instance-c33627a6-422c-461a-82f7-ac78b0a6d72a.database.cloud.databricks.com
   - name: LAKEBASE_PORT
     value: "5432"
 
