@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import List, Literal
+from pydantic import BaseModel, field_serializer
+from typing import List, Literal, Union
 from datetime import datetime
 
 
@@ -82,10 +82,16 @@ class WarehouseInfo(BaseModel):
 
 class TraceInfo(BaseModel):
     trace_id: str
-    trace_start: str
+    trace_start: Union[str, datetime]
     services_involved: List[str]
     total_duration_ms: float
     span_count: int
+    
+    @field_serializer('trace_start')
+    def serialize_trace_start(self, value: Union[str, datetime]) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
 
 
 class SpanDetail(BaseModel):
@@ -95,5 +101,34 @@ class SpanDetail(BaseModel):
 
 class TraceDetail(BaseModel):
     trace_id: str
-    trace_start: str
+    trace_start: Union[str, datetime]
     spans: List[SpanDetail]
+    
+    @field_serializer('trace_start')
+    def serialize_trace_start(self, value: Union[str, datetime]) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
+
+
+class SpanWaterfall(BaseModel):
+    span_id: str
+    name: str
+    service_name: str
+    duration_ms: float
+    start_offset_ms: float
+    parent_span_id: str | None
+    is_error: bool
+
+
+class TraceWaterfall(BaseModel):
+    trace_id: str
+    trace_start: Union[str, datetime]
+    total_duration_ms: float
+    spans: List[SpanWaterfall]
+    
+    @field_serializer('trace_start')
+    def serialize_trace_start(self, value: Union[str, datetime]) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
