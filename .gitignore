@@ -295,3 +295,9 @@ mlartifacts/
 
 # Generated client
 client/src/client/
+
+# Local development scripts (keep these out of version control)
+discover_lakebase_schema.py
+grant_permissions.sh
+grant_*.py
+grant_*.sh

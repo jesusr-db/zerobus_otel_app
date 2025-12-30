@@ -76,7 +76,43 @@ A modern, dark-themed observability dashboard that provides:
 - `jmr_demo.zerobus.*_silver` - pre-filtered metric tables
 - Requires real-time aggregation: AVG, MAX, COUNT, percentiles
 
-### 3. Service Detail Panel (Priority: P0)
+### 3. Time-Based Investigation View (Priority: P0)
+**Description:** Unified time-series visualization for correlating metrics, traces, and logs across a selected time range
+
+**Purpose:** Enable rapid incident investigation by showing all observability signals on a shared timeline
+
+**Requirements:**
+- **Shared Time Axis:** All visualizations aligned on the same time scale
+- **Three-Panel Layout:**
+  1. **Metrics Panel** - Time-series charts for latency, errors, request rate
+  2. **Traces Panel** - Trace waterfall list with timeline markers showing when each trace occurred
+  3. **Logs Panel** - Structured log events with severity indicators on timeline
+- **Interactive Timeline:**
+  - Click and drag to select time range for zoom
+  - Hover to see vertical line across all panels showing same moment
+  - Click on trace → show detailed waterfall
+  - Click on log entry → expand full log context
+- **Correlation Features:**
+  - Highlight metric anomalies and show corresponding traces/logs
+  - Filter traces by service, status code, duration threshold
+  - Filter logs by severity level (ERROR, WARN, INFO)
+- **Time Range Controls:**
+  - Quick selectors: Last 15min, 1hr, 6hr, 24hr
+  - Custom time range picker (start/end datetime)
+  - Zoom in/out controls
+
+**Data Sources:**
+- `jmr_demo.zerobus.trace_assembled_silver` - metrics aggregated from traces
+- `jmr_demo.zerobus.traces_silver_synced` - individual trace records
+- `jmr_demo.zerobus.logs_silver` - log events (if available)
+
+**Visual Design:**
+- Stacked panels with shared time axis
+- Metric anomalies highlighted in red/yellow
+- Trace duration bars colored by status (green=success, red=error)
+- Log severity color-coded (red=error, yellow=warn, gray=info)
+
+### 4. Service Detail Panel (Priority: P0)
 **Description:** Contextual side panel with deep-dive service information
 
 **Contents:**
@@ -93,7 +129,7 @@ A modern, dark-themed observability dashboard that provides:
 - Close button and click-outside-to-close
 - Persistent across time range changes
 
-### 4. Multi-View Layout (Priority: P1)
+### 5. Multi-View Layout (Priority: P1)
 **Description:** Organized UI with multiple panels for different views
 
 **Views:**
