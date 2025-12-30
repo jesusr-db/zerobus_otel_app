@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    grant_lakebase_permissions:
+      name: grant_lakebase_permissions_${bundle.target}
+      
+      tasks:
+        - task_key: grant_permissions
+          notebook_task:
+            notebook_path: ../notebooks/grant_lakebase_permissions.py
+            source: WORKSPACE
+          
+          timeout_seconds: 600
+      
+      parameters:
+        - name: APP_NAME
+          default: o11y-jmr
+        - name: LAKEBASE_INSTANCE_NAME
+          default: zerobus-dev
+        - name: LAKEBASE_HOST
+          default: instance-c33627a6-422c-461a-82f7-ac78b0a6d72a.database.cloud.databricks.com
+        - name: LAKEBASE_PORT
+          default: "5432"
+        - name: LAKEBASE_DATABASE_NAME
+          default: zerobus_sdp
+        - name: LAKEBASE_SCHEMA_NAME
+          default: zerobus_sdp
+      
+      max_concurrent_runs: 1
+      
+      tags:
+        purpose: "Grant Lakebase permissions to app service principal"
+        app: "o11y-jmr"
