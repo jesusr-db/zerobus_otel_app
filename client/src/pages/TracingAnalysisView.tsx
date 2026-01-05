@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTimeRange } from '../contexts/TimeRangeContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface TraceInfo {
   trace_id: string;
@@ -152,21 +158,64 @@ export function TracingAnalysisView() {
         
         <div className="h-10 relative" style={{ paddingLeft: `${indentPx}px` }}>
           <div className="h-full bg-muted/30 rounded relative">
-            <div
-              className={`absolute ${colorClass} hover:opacity-90 transition-all rounded flex items-center justify-between px-2 text-xs font-medium text-white overflow-hidden shadow-sm`}
-              style={{
-                left: `${leftPercent}%`,
-                width: `${Math.max(widthPercent, 1)}%`,
-                height: '32px',
-                top: '4px',
-              }}
-              title={`${span.service_name} - ${span.name}\nStart: ${span.start_offset_ms.toFixed(2)}ms\nDuration: ${span.duration_ms.toFixed(2)}ms`}
-            >
-              <span className="truncate">{span.name}</span>
-              {widthPercent > 10 && (
-                <span className="ml-2 opacity-90">{span.duration_ms.toFixed(1)}ms</span>
-              )}
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={`absolute ${colorClass} hover:opacity-90 transition-all rounded flex items-center justify-between px-2 text-xs font-medium text-white overflow-hidden shadow-sm cursor-pointer`}
+                  style={{
+                    left: `${leftPercent}%`,
+                    width: `${Math.max(widthPercent, 1)}%`,
+                    height: '32px',
+                    top: '4px',
+                  }}
+                >
+                  <span className="truncate">{span.name}</span>
+                  {widthPercent > 10 && (
+                    <span className="ml-2 opacity-90">{span.duration_ms.toFixed(1)}ms</span>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">
+                <div className="space-y-2 text-sm">
+                  <div className="font-semibold border-b border-border pb-1">
+                    {span.name}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Service:</span>
+                      <span className="font-mono">{span.service_name}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Span ID:</span>
+                      <span className="font-mono text-xs">{span.span_id.substring(0, 16)}...</span>
+                    </div>
+                    {span.parent_span_id && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Parent:</span>
+                        <span className="font-mono text-xs">{span.parent_span_id.substring(0, 16)}...</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Start Offset:</span>
+                      <span className="font-mono">{span.start_offset_ms.toFixed(2)}ms</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Duration:</span>
+                      <span className="font-mono">{span.duration_ms.toFixed(2)}ms</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Depth:</span>
+                      <span className="font-mono">{span.depth}</span>
+                    </div>
+                    {span.is_error && (
+                      <div className="flex items-center gap-2 text-red-500 font-semibold pt-1 border-t border-border">
+                        <span>⚠️ Error</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -174,13 +223,14 @@ export function TracingAnalysisView() {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-foreground">Tracing Analysis</h2>
-        <p className="text-sm text-muted-foreground">
-          Visualize trace spans in waterfall format with parent-child relationships
-        </p>
-      </div>
+    <TooltipProvider>
+      <div className="flex h-full flex-col">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-foreground">Tracing Analysis</h2>
+          <p className="text-sm text-muted-foreground">
+            Visualize trace spans in waterfall format with parent-child relationships
+          </p>
+        </div>
 
       <div className="mb-4 flex gap-4">
         <div>
@@ -318,6 +368,7 @@ export function TracingAnalysisView() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

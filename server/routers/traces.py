@@ -37,12 +37,13 @@ async def get_all_traces(
     if DATA_BACKEND == "lakebase":
         data_manager = LakebaseManager(user_token=user_token)
         query = f"""
-        SELECT 
+        SELECT
           trace_id,
           trace_start,
           services_involved,
-          total_trace_duration_ms as total_duration_ms,
-          span_count
+          span_count,
+          total_trace_duration_ms,
+          span_details
         FROM zerobus_sdp.traces_assembled_synced
         WHERE trace_start >= NOW() - INTERVAL '{interval}'
         ORDER BY trace_start DESC
@@ -68,8 +69,47 @@ async def get_all_traces(
         if not results:
             logger.info("No traces found")
             return []
-        
-        return [TraceInfo(**row) for row in results]
+
+        # Calculate accurate duration for traces with 0 or NULL duration
+        # Uses same logic as waterfall endpoint: min start to max end time
+        traces = []
+        for row in results:
+            total_duration = float(row.get('total_trace_duration_ms') or 0)
+
+            # If duration is 0, calculate from span_details
+            if total_duration == 0 and 'span_details' in row and row['span_details']:
+                span_details = row['span_details']
+                if span_details and len(span_details) > 0:
+                    try:
+                        # Calculate precise duration: earliest start to latest end
+                        # This matches the waterfall calculation logic
+                        min_start = float('inf')
+                        max_end = 0.0
+
+                        for span in span_details:
+                            start_offset = float(span.get('start_offset_ms', 0))
+                            duration = float(span.get('duration_ms', 0))
+                            end_time = start_offset + duration
+
+                            min_start = min(min_start, start_offset)
+                            max_end = max(max_end, end_time)
+
+                        if max_end > min_start:
+                            total_duration = max_end - min_start
+                    except Exception as calc_error:
+                        logger.warning(f"Duration calculation failed for {row['trace_id']}: {calc_error}")
+
+            # Create TraceInfo with calculated duration
+            trace_data = {
+                'trace_id': row['trace_id'],
+                'trace_start': row['trace_start'],
+                'services_involved': row['services_involved'],
+                'total_duration_ms': total_duration,
+                'span_count': row['span_count']
+            }
+            traces.append(TraceInfo(**trace_data))
+
+        return traces
     except Exception as e:
         logger.error(f"Traces query failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
@@ -150,18 +190,19 @@ async def get_trace_waterfall(
         if spans_results and len(spans_results) > 0 and 'start_time_unix_nano' in spans_results[0]:
             # Use detailed span timing data
             trace_start_nano = min(s['start_time_unix_nano'] for s in spans_results)
-            
+            trace_end_nano = max(s['end_time_unix_nano'] for s in spans_results)
+
             spans = []
             for span in spans_results:
                 start_offset_ns = span['start_time_unix_nano'] - trace_start_nano
                 duration_ns = span['end_time_unix_nano'] - span['start_time_unix_nano']
-                
+
                 attributes = span.get('attributes', {})
                 is_error = False
                 if isinstance(attributes, dict):
                     status_code = attributes.get('http.status_code')
                     is_error = status_code and int(status_code) >= 400
-                
+
                 spans.append(SpanWaterfall(
                     span_id=span['span_id'],
                     name=span['name'],
@@ -171,6 +212,9 @@ async def get_trace_waterfall(
                     parent_span_id=span.get('parent_span_id'),
                     is_error=is_error
                 ))
+
+            # Calculate total duration from actual span timings
+            calculated_total_duration_ms = (trace_end_nano - trace_start_nano) / 1_000_000
         else:
             spans = []
             for span in trace_data['span_details']:
@@ -183,11 +227,25 @@ async def get_trace_waterfall(
                     parent_span_id=span.get('parent_span_id'),
                     is_error=span.get('is_error', False)
                 ))
-        
+
+            # Calculate total duration from spans if not in database
+            if spans:
+                calculated_total_duration_ms = max(
+                    span.start_offset_ms + span.duration_ms for span in spans
+                )
+            else:
+                calculated_total_duration_ms = 0.0
+
+        # Use calculated duration if database value is 0 or missing
+        db_total_duration = float(trace_data.get('total_trace_duration_ms') or 0)
+        total_duration_ms = db_total_duration if db_total_duration > 0 else calculated_total_duration_ms
+
+        logger.info(f"Trace {trace_id}: DB duration={db_total_duration}ms, Calculated duration={calculated_total_duration_ms}ms, Using={total_duration_ms}ms")
+
         return TraceWaterfall(
             trace_id=trace_data['trace_id'],
             trace_start=trace_data['trace_start'],
-            total_duration_ms=float(trace_data['total_trace_duration_ms']),
+            total_duration_ms=total_duration_ms,
             spans=spans
         )
     except HTTPException:
