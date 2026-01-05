@@ -75,4 +75,4 @@ export interface WarehouseInfo {
   status: string;
 }
 
-export type TimeRange = '1h' | '24h';
+export type TimeRange = '5m' | '1h' | '1d' | '1w';

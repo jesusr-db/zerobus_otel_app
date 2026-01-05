@@ -7,13 +7,19 @@ from server.config import OBSERVABILITY_TABLE_PREFIX, DATA_BACKEND
 
 router = APIRouter()
 
-TimeRange = Literal["1h", "24h"]
+TimeRange = Literal["5m", "1h", "1d", "1w"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
+    """
+    Convert time range to SQL interval string and seconds.
+    Returns (interval_string, seconds)
+    """
     intervals = {
+        "5m": ("5 MINUTE", 300),
         "1h": ("1 HOUR", 3600),
-        "24h": ("24 HOUR", 86400),
+        "1d": ("1 DAY", 86400),
+        "1w": ("7 DAY", 604800),
     }
     return intervals[time_range]
 

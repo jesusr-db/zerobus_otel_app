@@ -21,13 +21,19 @@ from server.config import OBSERVABILITY_TABLE_PREFIX, DATA_BACKEND
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-TimeRange = Literal["1h", "24h"]
+TimeRange = Literal["5m", "1h", "1d", "1w"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
+    """
+    Convert time range to SQL interval string and seconds.
+    Returns (interval_string, seconds)
+    """
     intervals = {
-        "1h": ("1 hour", 3600),  # PostgreSQL lowercase
-        "24h": ("24 hour", 86400),
+        "5m": ("5 minute", 300),  # PostgreSQL lowercase
+        "1h": ("1 hour", 3600),
+        "1d": ("1 day", 86400),
+        "1w": ("7 day", 604800),
     }
     return intervals[time_range]
 
