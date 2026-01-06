@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Literal
+import logging
 from server.models.observability import DependencyGraph, GraphNode, GraphEdge
 from server.services.warehouse_manager import WarehouseManager
 from server.services.lakebase_manager import LakebaseManager
 from server.config import OBSERVABILITY_TABLE_PREFIX, DATA_BACKEND
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TimeRange = Literal["5m", "1h", "1d", "1w"]

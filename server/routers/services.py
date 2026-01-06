@@ -47,10 +47,39 @@ async def get_services(
     
     # Use native query based on backend
     if DATA_BACKEND == "lakebase":
-        # Native PostgreSQL query for Lakebase
+        # Native PostgreSQL query for Lakebase - combines traces, logs, and metrics
         query = f"""
-        WITH current_spans AS (
-          SELECT 
+        WITH trace_services AS (
+          SELECT DISTINCT
+            span_value->>'service_name' as service_name
+          FROM zerobus_sdp.traces_assembled_synced t
+          CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+          WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
+            AND span_value->>'service_name' IS NOT NULL
+        ),
+        log_services AS (
+          SELECT DISTINCT
+            service_name
+          FROM zerobus_sdp.logs_synced
+          WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
+        ),
+        metric_services AS (
+          SELECT DISTINCT
+            service_name
+          FROM zerobus_sdp.metrics_1min_synced
+          WHERE window_start >= NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
+        ),
+        all_services AS (
+          SELECT service_name FROM trace_services
+          UNION
+          SELECT service_name FROM log_services
+          UNION
+          SELECT service_name FROM metric_services
+        ),
+        current_spans AS (
+          SELECT
             span_value->>'service_name' as service_name,
             (span_value->>'duration_ms')::float as duration_ms,
             (span_value->>'is_error')::boolean as is_error,
@@ -60,7 +89,7 @@ async def get_services(
           WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
         ),
         baseline_spans AS (
-          SELECT 
+          SELECT
             span_value->>'service_name' as service_name,
             (span_value->>'duration_ms')::float as duration_ms
           FROM zerobus_sdp.traces_assembled_synced t
@@ -68,7 +97,17 @@ async def get_services(
           WHERE t.trace_start >= NOW() - INTERVAL '{interval}' * 2
             AND t.trace_start < NOW() - INTERVAL '{interval}'
         ),
-        current_metrics AS (
+        log_error_counts AS (
+          SELECT
+            service_name,
+            COUNT(*) as log_error_count
+          FROM zerobus_sdp.logs_synced
+          WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
+            AND severity_text IN ('ERROR', 'FATAL', 'CRITICAL')
+          GROUP BY service_name
+        ),
+        span_metrics AS (
           SELECT
             service_name,
             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
@@ -76,7 +115,7 @@ async def get_services(
             PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as latency_p99,
             AVG(duration_ms) as avg_duration,
             MAX(duration_ms) as max_duration,
-            SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
+            SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as span_error_count,
             COUNT(*) as request_count
           FROM current_spans
           GROUP BY service_name
@@ -89,25 +128,28 @@ async def get_services(
           FROM baseline_spans
           GROUP BY service_name
         )
-        SELECT 
-          c.service_name,
-          c.latency_p50 as current_latency_p50,
-          c.latency_p95 as current_latency_p95,
-          c.latency_p99 as current_latency_p99,
-          c.avg_duration as avg_duration_ms,
-          c.max_duration as max_duration_ms,
-          c.error_count,
-          c.request_count,
-          CAST(c.error_count AS FLOAT) / NULLIF(c.request_count, 0) as error_rate,
-          c.request_count / {seconds} as requests_per_second,
-          CASE 
-            WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
-            WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
+        SELECT
+          s.service_name,
+          COALESCE(m.latency_p50, 0.0) as current_latency_p50,
+          COALESCE(m.latency_p95, 0.0) as current_latency_p95,
+          COALESCE(m.latency_p99, 0.0) as current_latency_p99,
+          COALESCE(m.avg_duration, 0.0) as avg_duration_ms,
+          COALESCE(m.max_duration, 0.0) as max_duration_ms,
+          COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) as error_count,
+          COALESCE(m.request_count, 0) as request_count,
+          CAST(COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) AS FLOAT) / NULLIF(COALESCE(m.request_count, 1), 0) as error_rate,
+          COALESCE(m.request_count, 0) / {seconds} as requests_per_second,
+          CASE
+            WHEN COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) > 0 THEN 'critical'
+            WHEN m.latency_p50 > COALESCE(b.baseline_latency_p50, m.latency_p50) THEN 'warning'
+            WHEN m.request_count / {seconds} > COALESCE(b.baseline_rps, m.request_count / {seconds}) THEN 'warning'
             ELSE 'healthy'
           END as health_status
-        FROM current_metrics c
-        LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
-        ORDER BY c.request_count DESC
+        FROM all_services s
+        LEFT JOIN span_metrics m ON s.service_name = m.service_name
+        LEFT JOIN log_error_counts l ON s.service_name = l.service_name
+        LEFT JOIN baseline_metrics b ON s.service_name = b.service_name
+        ORDER BY COALESCE(m.request_count, 0) DESC, s.service_name
         """
     else:
         # Spark SQL query for Warehouse

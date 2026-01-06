@@ -458,6 +458,201 @@ async def discover_lakebase_schema(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/data-freshness")
+async def check_data_freshness(request: Request):
+    """
+    Check data freshness in Lakebase to diagnose time range issues.
+
+    Returns:
+    - Current database time
+    - Most recent trace timestamp
+    - Data lag
+    - Trace counts for different time ranges (5m, 1h, 1d)
+    - Recent trace samples
+    """
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+
+    try:
+        from server.services.lakebase_manager import LakebaseManager
+
+        lakebase = LakebaseManager(user_token=user_token)
+
+        # Check freshness and trace counts
+        freshness_query = """
+        SELECT
+            NOW() as current_db_time,
+            MAX(trace_start) as most_recent_trace,
+            NOW() - MAX(trace_start) as data_lag,
+            COUNT(CASE WHEN trace_start >= NOW() - INTERVAL '5 minutes' THEN 1 END) as traces_last_5min,
+            COUNT(CASE WHEN trace_start >= NOW() - INTERVAL '1 hour' THEN 1 END) as traces_last_1hr,
+            COUNT(CASE WHEN trace_start >= NOW() - INTERVAL '1 day' THEN 1 END) as traces_last_1day,
+            COUNT(*) as total_traces
+        FROM zerobus_sdp.traces_assembled_synced
+        """
+
+        freshness_results = lakebase.execute_query(freshness_query)
+        freshness_data = freshness_results[0] if freshness_results else {}
+
+        # Get recent trace timestamps
+        recent_query = """
+        SELECT
+            trace_start,
+            span_count,
+            NOW() - trace_start as age
+        FROM zerobus_sdp.traces_assembled_synced
+        ORDER BY trace_start DESC
+        LIMIT 10
+        """
+
+        recent_traces = lakebase.execute_query(recent_query)
+
+        # Get service breakdown for 5m
+        services_5m_query = """
+        WITH current_spans AS (
+          SELECT
+            span_value->>'service_name' as service_name
+          FROM zerobus_sdp.traces_assembled_synced t
+          CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+          WHERE t.trace_start >= NOW() - INTERVAL '5 minutes'
+        )
+        SELECT
+          service_name,
+          COUNT(*) as span_count
+        FROM current_spans
+        GROUP BY service_name
+        ORDER BY span_count DESC
+        LIMIT 10
+        """
+
+        services_5m = lakebase.execute_query(services_5m_query)
+
+        # Build response
+        result = {
+            "current_db_time": str(freshness_data.get('current_db_time')),
+            "most_recent_trace": str(freshness_data.get('most_recent_trace')),
+            "data_lag": str(freshness_data.get('data_lag')),
+            "trace_counts": {
+                "last_5min": freshness_data.get('traces_last_5min', 0),
+                "last_1hr": freshness_data.get('traces_last_1hr', 0),
+                "last_1day": freshness_data.get('traces_last_1day', 0),
+                "total": freshness_data.get('total_traces', 0)
+            },
+            "recent_traces": [
+                {
+                    "trace_start": str(trace['trace_start']),
+                    "span_count": trace['span_count'],
+                    "age": str(trace['age'])
+                }
+                for trace in recent_traces
+            ],
+            "services_in_5m": [
+                {
+                    "service_name": svc['service_name'],
+                    "span_count": svc['span_count']
+                }
+                for svc in services_5m
+            ],
+            "diagnosis": {
+                "has_5m_data": freshness_data.get('traces_last_5min', 0) > 0,
+                "issue": None if freshness_data.get('traces_last_5min', 0) > 0 else "No data in last 5 minutes - data sync may be delayed"
+            }
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Data freshness check failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/inspect-otel-tables")
+async def inspect_otel_tables(request: Request):
+    """
+    Inspect schema and sample data from all OTEL tables (logs, metrics, traces).
+
+    This helps understand how to query services from each data source.
+    """
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+
+    try:
+        from server.services.lakebase_manager import LakebaseManager
+
+        lakebase = LakebaseManager(user_token=user_token)
+
+        tables_info = {}
+
+        for table_name in ['logs_synced', 'metrics_1min_synced', 'traces_assembled_synced']:
+            table_info = {
+                "table_name": table_name,
+                "columns": [],
+                "row_count": 0,
+                "service_columns": [],
+                "sample_services": []
+            }
+
+            # Get column schema
+            schema_query = f"""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'zerobus_sdp'
+              AND table_name = '{table_name}'
+            ORDER BY ordinal_position
+            """
+
+            columns = lakebase.execute_query(schema_query)
+            table_info["columns"] = [
+                {
+                    "name": col['column_name'],
+                    "type": col['data_type'],
+                    "nullable": col['is_nullable'] == 'YES'
+                }
+                for col in columns
+            ]
+
+            # Get row count
+            count_query = f"SELECT COUNT(*) as count FROM zerobus_sdp.{table_name}"
+            count_result = lakebase.execute_query(count_query)
+            table_info["row_count"] = count_result[0]['count'] if count_result else 0
+
+            # Find service columns
+            service_cols = [c['column_name'] for c in columns if 'service' in c['column_name'].lower()]
+            table_info["service_columns"] = service_cols
+
+            # Get sample services if service columns exist
+            if service_cols and table_info["row_count"] > 0:
+                for col in service_cols:
+                    try:
+                        service_query = f"""
+                        SELECT DISTINCT {col} as service_name
+                        FROM zerobus_sdp.{table_name}
+                        WHERE {col} IS NOT NULL
+                        LIMIT 10
+                        """
+                        services = lakebase.execute_query(service_query)
+                        table_info["sample_services"].extend([
+                            {"column": col, "service": svc['service_name']}
+                            for svc in services
+                        ])
+                    except Exception as e:
+                        logger.warning(f"Could not query {col} from {table_name}: {e}")
+
+            tables_info[table_name] = table_info
+
+        return {
+            "success": True,
+            "tables": tables_info,
+            "summary": {
+                "total_tables": len(tables_info),
+                "tables_with_data": sum(1 for t in tables_info.values() if t["row_count"] > 0),
+                "total_rows": sum(t["row_count"] for t in tables_info.values())
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"OTEL tables inspection failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def validation_health():
     """Health check for validation endpoints."""
@@ -468,6 +663,8 @@ async def validation_health():
             "/lakebase-validation/validate-query",
             "/lakebase-validation/compare-results",
             "/lakebase-validation/test-services-query",
-            "/lakebase-validation/discover-schema"
+            "/lakebase-validation/discover-schema",
+            "/lakebase-validation/data-freshness",
+            "/lakebase-validation/inspect-otel-tables"
         ]
     }
