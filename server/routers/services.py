@@ -48,14 +48,14 @@ async def get_services(
     # Use native query based on backend
     if DATA_BACKEND == "lakebase":
         # Native PostgreSQL query for Lakebase - combines traces, logs, and metrics
+        # Uses traces_silver_synced (real-time individual spans) instead of traces_assembled_synced (batch)
         query = f"""
         WITH trace_services AS (
           SELECT DISTINCT
-            span_value->>'service_name' as service_name
-          FROM zerobus_sdp.traces_assembled_synced t
-          CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-          WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
-            AND span_value->>'service_name' IS NOT NULL
+            service_name
+          FROM zerobus_sdp.traces_silver_synced
+          WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
         ),
         log_services AS (
           SELECT DISTINCT
@@ -80,22 +80,22 @@ async def get_services(
         ),
         current_spans AS (
           SELECT
-            span_value->>'service_name' as service_name,
-            (span_value->>'duration_ms')::float as duration_ms,
-            (span_value->>'is_error')::boolean as is_error,
-            t.trace_start
-          FROM zerobus_sdp.traces_assembled_synced t
-          CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-          WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
+            service_name,
+            duration_ms,
+            is_error,
+            start_timestamp
+          FROM zerobus_sdp.traces_silver_synced
+          WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
         ),
         baseline_spans AS (
           SELECT
-            span_value->>'service_name' as service_name,
-            (span_value->>'duration_ms')::float as duration_ms
-          FROM zerobus_sdp.traces_assembled_synced t
-          CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-          WHERE t.trace_start >= NOW() - INTERVAL '{interval}' * 2
-            AND t.trace_start < NOW() - INTERVAL '{interval}'
+            service_name,
+            duration_ms
+          FROM zerobus_sdp.traces_silver_synced
+          WHERE start_timestamp >= NOW() - INTERVAL '{interval}' * 2
+            AND start_timestamp < NOW() - INTERVAL '{interval}'
+            AND service_name IS NOT NULL
         ),
         log_error_counts AS (
           SELECT

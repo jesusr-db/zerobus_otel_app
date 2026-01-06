@@ -581,7 +581,7 @@ async def inspect_otel_tables(request: Request):
 
         tables_info = {}
 
-        for table_name in ['logs_synced', 'metrics_1min_synced', 'traces_assembled_synced']:
+        for table_name in ['logs_synced', 'metrics_1min_synced', 'traces_assembled_synced', 'traces_silver_synced']:
             table_info = {
                 "table_name": table_name,
                 "columns": [],
@@ -650,6 +650,60 @@ async def inspect_otel_tables(request: Request):
 
     except Exception as e:
         logger.error(f"OTEL tables inspection failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/list-tables")
+async def list_tables(request: Request):
+    """
+    List all tables in the zerobus_sdp schema to discover available tables.
+    """
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+
+    try:
+        from server.services.lakebase_manager import LakebaseManager
+
+        lakebase = LakebaseManager(user_token=user_token)
+
+        # Query to list all tables in the schema
+        query = """
+        SELECT
+            table_name,
+            table_type
+        FROM information_schema.tables
+        WHERE table_schema = 'zerobus_sdp'
+        ORDER BY table_name
+        """
+
+        tables = lakebase.execute_query(query)
+
+        # For each table, get row count
+        table_info = []
+        for table in tables:
+            table_name = table['table_name']
+            try:
+                count_query = f"SELECT COUNT(*) as count FROM zerobus_sdp.{table_name}"
+                count_result = lakebase.execute_query(count_query)
+                row_count = count_result[0]['count'] if count_result else 0
+            except Exception as e:
+                row_count = None
+                logger.warning(f"Could not get row count for {table_name}: {e}")
+
+            table_info.append({
+                "table_name": table_name,
+                "table_type": table['table_type'],
+                "row_count": row_count
+            })
+
+        return {
+            "success": True,
+            "schema": "zerobus_sdp",
+            "table_count": len(table_info),
+            "tables": table_info
+        }
+
+    except Exception as e:
+        logger.error(f"List tables failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
