@@ -6,6 +6,7 @@ import { TimeRangeProvider } from './contexts/TimeRangeContext';
 import { DashboardView } from './pages/DashboardView';
 import { DependencyMapView } from './pages/DependencyMapView';
 import { ServicesListView } from './pages/ServicesListView';
+import { MetricsView } from './pages/MetricsView';
 import { TracesView } from './pages/TracesView';
 import { TracingAnalysisView } from './pages/TracingAnalysisView';
 
@@ -21,6 +22,7 @@ function App() {
               <Route path="/" element={<DashboardView />} />
               <Route path="/map" element={<DependencyMapView />} />
               <Route path="/services" element={<ServicesListView />} />
+              <Route path="/metrics" element={<MetricsView />} />
               <Route path="/traces" element={<TracesView onTraceClick={(traceId) => setSelectedTrace(traceId)} />} />
               <Route path="/tracing-analysis" element={<TracingAnalysisView />} />
             </Routes>
