@@ -105,10 +105,15 @@ class LakebaseManager:
         logger.info(f"SQLAlchemy engine created for Lakebase instance: {self.instance_name}")
         return self._engine
     
-    def execute_query(self, query: str) -> List[Dict[str, Any]]:
-        """Execute a query against Lakebase and return results as list of dicts."""
+    def execute_query(self, query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
+        """Execute a query against Lakebase and return results as list of dicts.
+
+        Args:
+            query: SQL query with %s placeholders for parameters
+            params: Optional list of parameters to bind to the query
+        """
         query_start = time.time()
-        
+
         try:
             logger.info("=" * 80)
             logger.info("Executing Lakebase Query")
@@ -117,28 +122,42 @@ class LakebaseManager:
             logger.info(f"Schema: {self.catalog_name}.{self.schema_name}")
             logger.info("-" * 80)
             logger.debug(f"Query:\n{query}")
+            if params:
+                logger.debug(f"Parameters: {params}")
             logger.info("-" * 80)
-            
+
             engine = self._get_engine()
-            
+
             with engine.connect() as conn:
-                result = conn.execute(text(query))
-                
+                # Convert %s placeholders to :param1, :param2, etc. for SQLAlchemy
+                if params:
+                    # Replace %s with :1, :2, :3, etc.
+                    query_with_placeholders = query
+                    param_dict = {}
+                    for i, param in enumerate(params, 1):
+                        # Find and replace the first %s with :param{i}
+                        query_with_placeholders = query_with_placeholders.replace('%s', f':param{i}', 1)
+                        param_dict[f'param{i}'] = param
+
+                    result = conn.execute(text(query_with_placeholders), param_dict)
+                else:
+                    result = conn.execute(text(query))
+
                 # Convert result to list of dictionaries
                 columns = result.keys()
                 results = []
                 for row in result:
                     row_dict = dict(zip(columns, row))
                     results.append(row_dict)
-                
+
                 query_duration = time.time() - query_start
-                
+
                 logger.info(f"✅ Query succeeded")
                 logger.info(f"   Rows returned: {len(results)}")
                 logger.info(f"   Columns: {list(columns)}")
                 logger.info(f"   Execution time: {query_duration:.3f}s")
                 logger.info("=" * 80)
-                
+
                 return results
         
         except Exception as e:

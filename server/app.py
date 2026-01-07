@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from server.routers import router
 from server.routers import lakebase_validation
 from server.routers import metrics_kpis
+from server.routers import logs
 
 logging.basicConfig(
     level=logging.DEBUG,  # Changed to DEBUG for detailed validation logging
@@ -68,6 +69,7 @@ app.add_middleware(
 app.include_router(router, prefix='/api', tags=['api'])
 app.include_router(lakebase_validation.router, prefix='/api', tags=['validation'])
 app.include_router(metrics_kpis.router, prefix='/api/metrics', tags=['metrics'])
+app.include_router(logs.router, prefix='/api/logs', tags=['logs'])
 
 
 @app.get('/health')

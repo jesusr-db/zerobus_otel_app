@@ -7,6 +7,7 @@ import { DashboardView } from './pages/DashboardView';
 import { DependencyMapView } from './pages/DependencyMapView';
 import { ServicesListView } from './pages/ServicesListView';
 import { MetricsView } from './pages/MetricsView';
+import { LogsView } from './pages/LogsView';
 import { TracesView } from './pages/TracesView';
 import { TracingAnalysisView } from './pages/TracingAnalysisView';
 
@@ -23,6 +24,7 @@ function App() {
               <Route path="/map" element={<DependencyMapView />} />
               <Route path="/services" element={<ServicesListView />} />
               <Route path="/metrics" element={<MetricsView />} />
+              <Route path="/logs" element={<LogsView />} />
               <Route path="/traces" element={<TracesView onTraceClick={(traceId) => setSelectedTrace(traceId)} />} />
               <Route path="/tracing-analysis" element={<TracingAnalysisView />} />
             </Routes>

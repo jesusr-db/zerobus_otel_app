@@ -22,6 +22,7 @@ export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProp
     { path: '/map', label: 'Dependency Map' },
     { path: '/services', label: 'Services' },
     { path: '/metrics', label: 'Metrics' },
+    { path: '/logs', label: 'Logs' },
     { path: '/traces', label: 'Traces' },
     { path: '/tracing-analysis', label: 'Tracing Analysis' },
   ];

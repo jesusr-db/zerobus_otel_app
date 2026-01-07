@@ -56,7 +56,7 @@ pytest.ini
 claude_scripts/
 
 # Build artifacts
-client/build/
+# client/build/  # COMMENTED OUT - We need to deploy the frontend build
 requirements.txt
 
 # Databricks Apps config (using bundle instead)
