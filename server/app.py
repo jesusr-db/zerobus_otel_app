@@ -52,6 +52,20 @@ app = FastAPI(
   lifespan=lifespan,
 )
 
+# ============================================================================
+# OpenTelemetry Setup - Simple console exporter for traces, metrics, and logs
+# ============================================================================
+try:
+  from server.observability.telemetry import setup_telemetry
+  setup_telemetry(
+      service_name=os.getenv('OTEL_SERVICE_NAME', 'o11y-app-backend'),
+      app=app
+  )
+  logger.info("✅ OpenTelemetry telemetry setup complete")
+except Exception as e:
+  logger.warning(f"⚠️ OpenTelemetry setup failed: {e}")
+  logger.warning("App will continue without telemetry")
+
 app.add_middleware(
   CORSMiddleware,
   allow_origins=[
