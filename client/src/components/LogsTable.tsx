@@ -17,6 +17,12 @@ import {
   SelectValue,
 } from './ui/select';
 import { ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from './ui/tooltip';
 
 interface LogsTableProps {
   logs: LogEntry[];
@@ -28,6 +34,7 @@ interface LogsTableProps {
   onPageSizeChange: (size: number) => void;
   onLogSelect: (log: LogEntry | null) => void;
   selectedLog: LogEntry | null;
+  onTraceClick: (traceId: string) => void;
 }
 
 export function LogsTable({
@@ -40,6 +47,7 @@ export function LogsTable({
   onPageSizeChange,
   onLogSelect,
   selectedLog,
+  onTraceClick,
 }: LogsTableProps) {
   // Severity colors
   const getSeverityColor = (severity: SeverityLevel) => {
@@ -133,9 +141,37 @@ export function LogsTable({
                   <TableCell className="text-sm text-foreground">
                     {truncateMessage(log.body)}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell
+                    className="text-center"
+                    onClick={(e) => {
+                      // Prevent row click when clicking in this cell
+                      if (log.trace_id && log.trace_id !== '') {
+                        e.stopPropagation();
+                      }
+                    }}
+                  >
                     {log.trace_id && log.trace_id !== '' && (
-                      <Link2 className="h-4 w-4 text-muted-foreground mx-auto" />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onTraceClick(log.trace_id);
+                              }}
+                              className="inline-flex items-center justify-center hover:bg-muted rounded p-1 transition-colors"
+                            >
+                              {/* Trace icon - currently filters by trace_id */}
+                              {/* Future: Link to distributed trace visualization (waterfall/flame graph) */}
+                              <Link2 className="h-4 w-4 text-primary hover:text-primary/80" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">Filter by this trace ID</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </TableCell>
                 </TableRow>

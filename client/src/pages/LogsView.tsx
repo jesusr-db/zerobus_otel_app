@@ -269,6 +269,10 @@ export function LogsView() {
               }}
               onLogSelect={setSelectedLog}
               selectedLog={selectedLog}
+              onTraceClick={(traceId) => {
+                setTraceIdFilter(traceId);
+                setPage(1);
+              }}
             />
           </div>
 
@@ -279,8 +283,9 @@ export function LogsView() {
                 log={selectedLog}
                 onClose={() => setSelectedLog(null)}
                 onViewTrace={(traceId) => {
-                  // TODO: Implement trace navigation
-                  console.log('View trace:', traceId);
+                  setTraceIdFilter(traceId);
+                  setPage(1);
+                  setSelectedLog(null); // Close panel to show filtered results
                 }}
               />
             </div>

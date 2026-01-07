@@ -238,7 +238,14 @@ A modern, dark-themed observability dashboard that provides:
 ### Future Enhancements (Post-MVP)
 - Custom time range picker
 - Service health alerting
-- Log integration and viewing
+- Log integration and viewing (✅ **Completed** - Phase 1-4)
+- **Distributed Tracing Analysis** (Roadmap)
+  - Waterfall/flame graph visualization for trace_id
+  - Full distributed trace timeline across services
+  - Span-level timing breakdown and dependencies
+  - Critical path analysis and bottleneck identification
+  - Integration: Click trace icon in Logs panel → trace visualization
+  - Reference implementations: Jaeger, Zipkin, Datadog APM
 - Anomaly detection
 - Export capabilities (charts, data)
 
