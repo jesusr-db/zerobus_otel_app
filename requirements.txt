@@ -6,7 +6,8 @@ python-multipart>=0.0.6
 httpx>=0.25.0
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
-# OpenTelemetry - Simple setup for traces, metrics, logs
+# OpenTelemetry - OTLP exporters to Databricks
 opentelemetry-api>=1.26.0
 opentelemetry-sdk>=1.26.0
 opentelemetry-instrumentation-fastapi>=0.47b0
+opentelemetry-exporter-otlp-proto-http>=1.26.0

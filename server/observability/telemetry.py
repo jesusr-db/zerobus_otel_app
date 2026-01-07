@@ -1,124 +1,137 @@
-"""Simple OpenTelemetry setup for FastAPI with console exporters.
+"""OpenTelemetry setup for FastAPI with OTLP exporters to Databricks.
 
-This module provides a simple, all-in-one setup for OpenTelemetry instrumentation:
-- Traces: Auto-instrumentation for FastAPI HTTP requests
-- Metrics: HTTP request metrics and custom metrics support
-- Logs: Log export with trace correlation
-
-All telemetry is exported to console (stdout) for easy debugging.
+This module provides OpenTelemetry instrumentation with Databricks OTLP endpoints:
+- Traces: Auto-instrumentation for FastAPI HTTP requests → Databricks traces table
+- Metrics: HTTP request metrics and custom metrics → Databricks metrics table
+- Logs: Log export with trace correlation → Databricks logs table
 """
 
 import logging
-import sys
-from typing import Optional, Sequence
-
+import os
 from opentelemetry import trace, metrics
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogExporter
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import ConsoleMetricExporter, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
-from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 
 logger = logging.getLogger(__name__)
 
 
-class DebugSpanExporter(SpanExporter):
-    """Wrapper around ConsoleSpanExporter with debug logging."""
-
-    def __init__(self):
-        self.console_exporter = ConsoleSpanExporter(out=sys.stdout)
-        print("[SPAN_EXPORTER] DebugSpanExporter initialized", flush=True)
-        logger.info("SPAN_EXPORTER: Initialized")
-
-    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        """Export spans with debug logging."""
-        print(f"[SPAN_EXPORTER] export() called with {len(spans)} span(s)", flush=True)
-        logger.info(f"SPAN_EXPORTER: export() called with {len(spans)} spans")
-
-        for i, span in enumerate(spans):
-            print(f"[SPAN_EXPORTER] Span {i+1}: name='{span.name}' trace_id={format(span.context.trace_id, '032x')}", flush=True)
-            logger.info(f"SPAN_EXPORTER: Span {i+1}: {span.name}")
-
-        # Call the actual console exporter
-        result = self.console_exporter.export(spans)
-        print(f"[SPAN_EXPORTER] export() completed with result: {result}", flush=True)
-        return result
-
-    def shutdown(self) -> None:
-        """Shutdown the exporter."""
-        print("[SPAN_EXPORTER] shutdown() called", flush=True)
-        self.console_exporter.shutdown()
-
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        """Force flush."""
-        print("[SPAN_EXPORTER] force_flush() called", flush=True)
-        return self.console_exporter.force_flush(timeout_millis)
-
-
 def setup_telemetry_providers(service_name: str = "o11y-app-backend") -> None:
-    """Set up OpenTelemetry providers and global instrumentation.
+    """Set up OpenTelemetry providers with OTLP exporters to Databricks.
 
     MUST be called BEFORE creating FastAPI app for auto-instrumentation to work.
 
     Args:
         service_name: Name of the service for telemetry identification
     """
-    print(f"[TELEMETRY] Setting up OpenTelemetry providers for service: {service_name}", flush=True)
+    # Get configuration from environment variables
+    databricks_host = os.getenv("DATABRICKS_HOST", "https://myworkspace.databricks.com")
+    api_token = os.getenv("DATABRICKS_OTEL_TOKEN")
+    catalog_name = os.getenv("OTEL_CATALOG", "catalog")
+    schema_name = os.getenv("OTEL_SCHEMA", "schema")
+    table_prefix = os.getenv("OTEL_TABLE_PREFIX", "otel")
+    environment = os.getenv("ENVIRONMENT", "development")
 
-    # Create resource with service name
-    resource = Resource.create({SERVICE_NAME: service_name})
+    print(f"[OTEL] Initializing OpenTelemetry for service: {service_name}", flush=True)
+    print(f"[OTEL] Databricks Host: {databricks_host}", flush=True)
+    print(f"[OTEL] UC Location: {catalog_name}.{schema_name}.{table_prefix}_*", flush=True)
+    print(f"[OTEL] Environment: {environment}", flush=True)
+
+    if not api_token:
+        print("[OTEL] ⚠️  WARNING: DATABRICKS_TOKEN not set, telemetry export will fail", flush=True)
+
+    # Create resource with service metadata
+    resource = Resource.create({
+        "service.name": service_name,
+        "service.version": "1.0.0",
+        "deployment.environment": environment
+    })
 
     # ============================================================================
-    # TRACES: Debug span exporter with logging
+    # TRACES: OTLP exporter to Databricks
     # ============================================================================
-    tracer_provider = TracerProvider(resource=resource)
-    debug_span_exporter = DebugSpanExporter()
-    tracer_provider.add_span_processor(SimpleSpanProcessor(debug_span_exporter))
-    trace.set_tracer_provider(tracer_provider)
-    print("[TELEMETRY] ✅ Traces configured with DebugSpanExporter", flush=True)
-
-    # ============================================================================
-    # METRICS: Console exporter with periodic export
-    # ============================================================================
-    console_metric_reader = PeriodicExportingMetricReader(
-        ConsoleMetricExporter(out=sys.stdout),
-        export_interval_millis=60000  # Export every 60 seconds
+    tracer_provider = TracerProvider(
+        resource=resource,
+        id_generator=RandomIdGenerator()
     )
-    meter_provider = MeterProvider(resource=resource, metric_readers=[console_metric_reader])
-    metrics.set_meter_provider(meter_provider)
-    print("[TELEMETRY] ✅ Metrics configured with ConsoleMetricExporter (60s interval)", flush=True)
+
+    try:
+        otlp_span_exporter = OTLPSpanExporter(
+            endpoint=f"{databricks_host}/api/2.0/otel/v1/traces",
+            headers={
+                "X-Databricks-UC-Table-Name": f"{catalog_name}.{schema_name}.{table_prefix}_traces",
+                "Authorization": f"Bearer {api_token}"
+            },
+        )
+        tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
+        print(f"[OTEL] ✅ OTLP span exporter configured for Databricks", flush=True)
+    except Exception as e:
+        print(f"[OTEL] ⚠️  Failed to configure OTLP span exporter: {e}", flush=True)
+
+    trace.set_tracer_provider(tracer_provider)
+    print(f"[OTEL] ✅ Trace provider configured", flush=True)
 
     # ============================================================================
-    # LOGS: Console exporter with trace correlation
+    # METRICS: OTLP exporter to Databricks
     # ============================================================================
-    logger_provider = LoggerProvider(resource=resource)
-    console_log_exporter = ConsoleLogExporter(out=sys.stdout)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(console_log_exporter))
-    set_logger_provider(logger_provider)
+    try:
+        otlp_metric_exporter = OTLPMetricExporter(
+            endpoint=f"{databricks_host}/api/2.0/otel/v1/metrics",
+            headers={
+                "content-type": "application/x-protobuf",
+                "X-Databricks-UC-Table-Name": f"{catalog_name}.{schema_name}.{table_prefix}_metrics",
+                "Authorization": f"Bearer {api_token}"
+            },
+        )
 
-    # Add OTEL logging handler to root logger
-    handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
-    logging.getLogger().addHandler(handler)
-    print("[TELEMETRY] ✅ Logs configured with ConsoleLogExporter", flush=True)
+        metric_reader = PeriodicExportingMetricReader(
+            otlp_metric_exporter,
+            export_interval_millis=60000  # Export every 60 seconds
+        )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+        metrics.set_meter_provider(meter_provider)
+        print(f"[OTEL] ✅ Metrics configured with OTLP exporter", flush=True)
+    except Exception as e:
+        print(f"[OTEL] ⚠️  Failed to configure metrics exporter: {e}", flush=True)
+        meter_provider = MeterProvider(resource=resource)
+        metrics.set_meter_provider(meter_provider)
 
     # ============================================================================
-    # SKIP GLOBAL INSTRUMENTATION: Will instrument app explicitly after creation
+    # LOGS: OTLP exporter to Databricks
     # ============================================================================
-    print("[TELEMETRY] Skipping global FastAPI instrumentation (will instrument app explicitly)", flush=True)
+    try:
+        otlp_log_exporter = OTLPLogExporter(
+            endpoint=f"{databricks_host}/api/2.0/otel/v1/logs",
+            headers={
+                "content-type": "application/x-protobuf",
+                "X-Databricks-UC-Table-Name": f"{catalog_name}.{schema_name}.{table_prefix}_logs",
+                "Authorization": f"Bearer {api_token}"
+            },
+        )
 
-    # Create a test span to verify tracer works
-    print("[TELEMETRY] Creating test span to verify tracer...", flush=True)
-    tracer = trace.get_tracer(__name__)
-    with tracer.start_as_current_span("test-startup-span") as span:
-        span.set_attribute("test", "startup")
-        print(f"[TELEMETRY] Test span created: {span.name}", flush=True)
-    print("[TELEMETRY] Test span should have been exported above", flush=True)
+        logger_provider = LoggerProvider(resource=resource)
+        logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_log_exporter))
+        set_logger_provider(logger_provider)
 
-    print(f"[TELEMETRY] ✅ OpenTelemetry providers setup complete for {service_name}", flush=True)
+        # Add OTEL logging handler to root logger
+        handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+        logging.getLogger().addHandler(handler)
+        logging.getLogger().setLevel(logging.INFO)
+        print(f"[OTEL] ✅ Logs configured with OTLP exporter", flush=True)
+    except Exception as e:
+        print(f"[OTEL] ⚠️  Failed to configure logs exporter: {e}", flush=True)
+
+    print(f"[OTEL] ✅ OpenTelemetry setup complete", flush=True)
     logger.info(f"OpenTelemetry providers initialized for {service_name}")
 
 
