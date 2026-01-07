@@ -38,6 +38,17 @@ def load_env_file(filepath: str) -> None:
 load_env_file('.env')
 load_env_file('.env.local')
 
+# ============================================================================
+# OpenTelemetry Setup - MUST be BEFORE creating FastAPI app
+# ============================================================================
+try:
+  from server.observability.telemetry import setup_telemetry_providers
+  setup_telemetry_providers(service_name=os.getenv('OTEL_SERVICE_NAME', 'o11y-app-backend'))
+  logger.info("✅ OpenTelemetry providers setup complete")
+except Exception as e:
+  logger.warning(f"⚠️ OpenTelemetry setup failed: {e}")
+  logger.warning("App will continue without telemetry")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,20 +62,6 @@ app = FastAPI(
   version='0.1.0',
   lifespan=lifespan,
 )
-
-# ============================================================================
-# OpenTelemetry Setup - Simple console exporter for traces, metrics, and logs
-# ============================================================================
-try:
-  from server.observability.telemetry import setup_telemetry
-  setup_telemetry(
-      service_name=os.getenv('OTEL_SERVICE_NAME', 'o11y-app-backend'),
-      app=app
-  )
-  logger.info("✅ OpenTelemetry telemetry setup complete")
-except Exception as e:
-  logger.warning(f"⚠️ OpenTelemetry setup failed: {e}")
-  logger.warning("App will continue without telemetry")
 
 app.add_middleware(
   CORSMiddleware,
@@ -91,6 +88,16 @@ async def health():
   """Health check endpoint."""
   return {'status': 'healthy'}
 
+
+# ============================================================================
+# OpenTelemetry Explicit Instrumentation - Instrument app after routes added
+# ============================================================================
+try:
+  from server.observability.telemetry import instrument_app_explicitly
+  instrument_app_explicitly(app)
+  logger.info("✅ OpenTelemetry app instrumentation complete")
+except Exception as e:
+  logger.warning(f"⚠️ OpenTelemetry app instrumentation failed: {e}")
 
 # ============================================================================
 # SERVE STATIC FILES FROM CLIENT BUILD DIRECTORY (MUST BE LAST!)
