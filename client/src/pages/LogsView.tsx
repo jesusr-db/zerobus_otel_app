@@ -15,10 +15,13 @@ import { LogsTable } from '../components/LogsTable';
 import { SeverityFilter } from '../components/SeverityFilter';
 import { SearchModeToggle } from '../components/SearchModeToggle';
 import { TraceFilter } from '../components/TraceFilter';
+import { LogDetailsPanel } from '../components/LogDetailsPanel';
+import { SeverityTimeline } from '../components/SeverityTimeline';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 export function LogsView() {
   const { timeRange } = useTimeRange();
-  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>('__ALL__');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchMode, setSearchMode] = useState<'simple' | 'advanced'>('simple');
@@ -27,6 +30,7 @@ export function LogsView() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(100);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
+  const [timelineCollapsed, setTimelineCollapsed] = useState<boolean>(false);
 
   // Debounce search input (300ms)
   useEffect(() => {
@@ -53,12 +57,15 @@ export function LogsView() {
   // Build query params for logs
   const buildLogsQueryParams = useCallback(() => {
     const params = new URLSearchParams({
-      service_name: selectedService,
       time_range: timeRange,
       search_mode: searchMode,
       page: page.toString(),
       page_size: pageSize.toString(),
     });
+
+    if (selectedService && selectedService !== '__ALL__') {
+      params.append('service_name', selectedService);
+    }
 
     if (debouncedSearch) {
       params.append('search', debouncedSearch);
@@ -75,11 +82,10 @@ export function LogsView() {
     return params.toString();
   }, [selectedService, timeRange, searchMode, debouncedSearch, selectedSeverities, traceIdFilter, page, pageSize]);
 
-  // Fetch logs
+  // Fetch logs (service is optional - searches all services if not specified)
   const { data: logsResponse, isLoading, error, refetch } = useQuery<LogsResponse>({
     queryKey: ['logs', selectedService, timeRange, searchMode, debouncedSearch, selectedSeverities, traceIdFilter, page, pageSize],
     queryFn: async () => {
-      if (!selectedService) throw new Error('No service selected');
       const response = await fetch(
         `/api/logs/list?${buildLogsQueryParams()}`,
         { credentials: 'include' }
@@ -87,7 +93,7 @@ export function LogsView() {
       if (!response.ok) throw new Error('Failed to fetch logs');
       return response.json();
     },
-    enabled: !!selectedService,
+    enabled: true,
   });
 
   // Toggle severity filter
@@ -128,15 +134,45 @@ export function LogsView() {
         </p>
       </div>
 
+      {/* Severity Timeline - Collapsible */}
+      <div className="mb-6 rounded-lg border border-border bg-card">
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => setTimelineCollapsed(!timelineCollapsed)}
+        >
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Severity Distribution Over Time</h3>
+            <p className="text-sm text-muted-foreground">
+              {selectedService && selectedService !== '__ALL__' ? `${selectedService} - ` : 'All Services - '}
+              Last {timeRange}
+            </p>
+          </div>
+          <Button variant="ghost" size="sm">
+            {timelineCollapsed ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+
+        {!timelineCollapsed && (
+          <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-2 duration-200">
+            <SeverityTimeline serviceName={selectedService} timeRange={timeRange as TimeRange} />
+          </div>
+        )}
+      </div>
+
       {/* Filter Bar */}
       <div className="mb-4 space-y-4">
         {/* Service and Search Row */}
         <div className="flex gap-4">
           <Select value={selectedService} onValueChange={setSelectedService}>
             <SelectTrigger className="w-80">
-              <SelectValue placeholder="Select a service" />
+              <SelectValue placeholder="All Services" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="__ALL__">All Services</SelectItem>
               {services?.map((service) => (
                 <SelectItem key={service.service_name} value={service.service_name}>
                   {service.service_name}
@@ -150,43 +186,40 @@ export function LogsView() {
             searchMode={searchMode}
             onSearchChange={setSearchTerm}
             onModeToggle={() => setSearchMode(searchMode === 'simple' ? 'advanced' : 'simple')}
-            disabled={!selectedService}
           />
         </div>
 
         {/* Severity Filter and Trace ID Row */}
-        {selectedService && (
-          <div className="flex gap-4 items-center justify-between">
-            <SeverityFilter
-              selectedSeverities={selectedSeverities}
-              severityCounts={severityCounts}
-              onToggleSeverity={toggleSeverity}
-              onClearAll={clearSeverityFilters}
+        <div className="flex gap-4 items-center justify-between">
+          <SeverityFilter
+            selectedSeverities={selectedSeverities}
+            severityCounts={severityCounts}
+            onToggleSeverity={toggleSeverity}
+            onClearAll={clearSeverityFilters}
+          />
+
+          <div className="flex gap-3 items-center">
+            <TraceFilter
+              traceId={traceIdFilter}
+              onChange={(value) => {
+                setTraceIdFilter(value);
+                setPage(1);
+              }}
+              onClear={() => {
+                setTraceIdFilter('');
+                setPage(1);
+              }}
             />
 
-            <div className="flex gap-3 items-center">
-              <TraceFilter
-                traceId={traceIdFilter}
-                onChange={(value) => {
-                  setTraceIdFilter(value);
-                  setPage(1);
-                }}
-                onClear={() => {
-                  setTraceIdFilter('');
-                  setPage(1);
-                }}
-              />
-
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear All
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear All
+            </Button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Loading State */}
-      {isLoading && selectedService && (
+      {isLoading && (
         <div className="flex h-full items-center justify-center">
           <div className="text-muted-foreground">Loading logs...</div>
         </div>
@@ -202,49 +235,56 @@ export function LogsView() {
         </div>
       )}
 
-      {/* No Service Selected */}
-      {!selectedService && !isLoading && (
-        <div className="flex h-full items-center justify-center">
-          <div className="max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
-            <div className="text-foreground font-semibold mb-2">No service selected</div>
-            <div className="text-sm text-muted-foreground">
-              Select a service from the dropdown above to view its logs
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* No Logs Found */}
-      {selectedService && !isLoading && !error && logsResponse && logsResponse.logs.length === 0 && (
+      {!isLoading && !error && logsResponse && logsResponse.logs.length === 0 && (
         <div className="flex h-full items-center justify-center">
           <div className="max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
             <div className="text-foreground font-semibold mb-2">No logs found</div>
             <div className="text-sm text-muted-foreground">
               {debouncedSearch || selectedSeverities.length > 0 || traceIdFilter
                 ? 'Try adjusting your filters or search criteria'
-                : 'No logs available for the selected service and time range'}
+                : selectedService && selectedService !== '__ALL__'
+                  ? 'No logs available for the selected service and time range'
+                  : 'No logs available for the selected time range'}
             </div>
           </div>
         </div>
       )}
 
-      {/* Logs Table */}
-      {selectedService && !isLoading && !error && logsResponse && logsResponse.logs.length > 0 && (
-        <div className="flex-1 overflow-hidden">
-          <LogsTable
-            logs={logsResponse.logs}
-            totalCount={logsResponse.total_count}
-            page={page}
-            pageSize={pageSize}
-            hasMore={logsResponse.has_more}
-            onPageChange={setPage}
-            onPageSizeChange={(newSize) => {
-              setPageSize(newSize);
-              setPage(1);
-            }}
-            onLogSelect={setSelectedLog}
-            selectedLog={selectedLog}
-          />
+      {/* Logs Table and Details Panel */}
+      {!isLoading && !error && logsResponse && logsResponse.logs.length > 0 && (
+        <div className="flex-1 overflow-hidden flex gap-4">
+          {/* Table - takes full width when no log selected, half when log selected */}
+          <div className={`flex-1 overflow-hidden transition-all ${selectedLog ? 'w-1/2' : 'w-full'}`}>
+            <LogsTable
+              logs={logsResponse.logs}
+              totalCount={logsResponse.total_count}
+              page={page}
+              pageSize={pageSize}
+              hasMore={logsResponse.has_more}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              onLogSelect={setSelectedLog}
+              selectedLog={selectedLog}
+            />
+          </div>
+
+          {/* Details Panel - slides in from right when log selected */}
+          {selectedLog && (
+            <div className="w-1/2 overflow-hidden animate-in slide-in-from-right duration-200">
+              <LogDetailsPanel
+                log={selectedLog}
+                onClose={() => setSelectedLog(null)}
+                onViewTrace={(traceId) => {
+                  // TODO: Implement trace navigation
+                  console.log('View trace:', traceId);
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

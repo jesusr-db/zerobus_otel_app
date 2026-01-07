@@ -27,13 +27,13 @@ def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
     return intervals[time_range]
 
 
-def get_timeline_granularity(time_range: TimeRange) -> str:
-    """Get appropriate time bucket granularity based on time range."""
+def get_timeline_granularity(time_range: TimeRange) -> int:
+    """Get appropriate time bucket granularity in seconds based on time range."""
     granularities = {
-        "5m": "30 seconds",   # 30-second buckets for 5 minutes
-        "1h": "5 minutes",    # 5-minute buckets for 1 hour
-        "1d": "1 hour",       # 1-hour buckets for 1 day
-        "1w": "1 day",        # 1-day buckets for 1 week
+        "5m": 30,      # 30-second buckets for 5 minutes
+        "1h": 300,     # 5-minute (300 seconds) buckets for 1 hour
+        "1d": 3600,    # 1-hour (3600 seconds) buckets for 1 day
+        "1w": 86400,   # 1-day (86400 seconds) buckets for 1 week
     }
     return granularities[time_range]
 
@@ -146,7 +146,7 @@ def build_search_clause(search: str, search_mode: SearchMode) -> tuple[str, List
 @router.get("/list")
 async def get_logs(
     request: Request,
-    service_name: str = Query(..., description="Service name to filter logs"),
+    service_name: Optional[str] = Query(None, description="Service name to filter logs (optional, searches all if not specified)"),
     time_range: TimeRange = Query(default="1h", description="Time range for logs"),
     search: Optional[str] = Query(None, description="Search term for body and attributes"),
     search_mode: SearchMode = Query(default="simple", description="Search mode: simple or advanced"),
@@ -178,10 +178,14 @@ async def get_logs(
     try:
         # Build WHERE clause components
         where_clauses = [
-            "service_name = %s",
             f"log_timestamp >= NOW() - INTERVAL '{interval}'"
         ]
-        params = [service_name]
+        params = []
+
+        # Add service filter if specified
+        if service_name:
+            where_clauses.append("service_name = %s")
+            params.append(service_name)
 
         # Add search clause
         if search:
@@ -310,7 +314,7 @@ async def get_logs(
 @router.get("/severity-timeline")
 async def get_severity_timeline(
     request: Request,
-    service_name: str = Query(..., description="Service name to filter logs"),
+    service_name: Optional[str] = Query(None, description="Service name to filter logs (optional, all services if not specified)"),
     time_range: TimeRange = Query(default="1h", description="Time range for timeline")
 ) -> SeverityTimelineResponse:
     """
@@ -332,30 +336,42 @@ async def get_severity_timeline(
     granularity = get_timeline_granularity(time_range)
 
     try:
+        # Build WHERE clause
+        where_conditions = [f"log_timestamp >= NOW() - INTERVAL '{interval}'"]
+        params = []
+
+        if service_name:
+            where_conditions.append("service_name = %s")
+            params.append(service_name)
+
+        where_clause = " AND ".join(where_conditions)
+
+        # Use epoch-based bucketing for arbitrary time intervals
+        # FLOOR(EXTRACT(EPOCH FROM timestamp) / bucket_seconds) gives us the bucket number
+        # Multiply back and convert to timestamp to get the bucket start time
         query = f"""
         SELECT
-            DATE_TRUNC('{granularity}', log_timestamp) as bucket,
+            TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM log_timestamp) / {granularity}) * {granularity}) as bucket,
             COUNT(*) FILTER (WHERE severity_text = 'ERROR') as ERROR,
             COUNT(*) FILTER (WHERE severity_text = 'WARN') as WARN,
             COUNT(*) FILTER (WHERE severity_text = 'INFO') as INFO,
             COUNT(*) FILTER (WHERE severity_text = 'DEBUG') as DEBUG
         FROM zerobus_sdp.logs_synced
-        WHERE service_name = %s
-            AND log_timestamp >= NOW() - INTERVAL '{interval}'
+        WHERE {where_clause}
         GROUP BY bucket
         ORDER BY bucket ASC
         """
 
-        results = lakebase.execute_query(query, [service_name])
+        results = lakebase.execute_query(query, params)
 
         timeline = []
         for row in results:
             point = SeverityTimelinePoint(
                 timestamp=row['bucket'],
-                ERROR=row['ERROR'] or 0,
-                WARN=row['WARN'] or 0,
-                INFO=row['INFO'] or 0,
-                DEBUG=row['DEBUG'] or 0
+                ERROR=row['error'] or 0,
+                WARN=row['warn'] or 0,
+                INFO=row['info'] or 0,
+                DEBUG=row['debug'] or 0
             )
             timeline.append(point)
 

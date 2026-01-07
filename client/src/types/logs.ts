@@ -13,7 +13,7 @@ export interface LogEntry {
   trace_id: string;
   span_id: string;
   log_timestamp: string;        // ISO 8601 timestamp
-  observed_timestamp: string;   // ISO 8601 timestamp
+  observed_timestamp: string | null;   // ISO 8601 timestamp, can be null
   severity_text: SeverityLevel | string;  // Can be any string if not one of the standard levels
   body: string;
   service_name: string;
@@ -39,12 +39,12 @@ export interface SeverityTimelinePoint {
 
 export interface SeverityTimelineResponse {
   timeline: SeverityTimelinePoint[];
-  service_name: string;
+  service_name: string | null;  // Null when all services selected
   time_range: string;
 }
 
 export interface LogsFilters {
-  service_name: string;
+  service_name?: string;  // Optional - searches all services if not specified
   time_range: TimeRange;
   search?: string;
   search_mode: SearchMode;

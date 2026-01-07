@@ -11,7 +11,7 @@ class LogEntry(BaseModel):
     trace_id: Optional[str] = ""
     span_id: Optional[str] = ""
     log_timestamp: datetime
-    observed_timestamp: datetime
+    observed_timestamp: Optional[datetime] = None
     severity_text: Optional[str] = "INFO"
     body: str
     service_name: str
@@ -40,5 +40,5 @@ class SeverityTimelinePoint(BaseModel):
 class SeverityTimelineResponse(BaseModel):
     """Response for severity timeline endpoint."""
     timeline: List[SeverityTimelinePoint]
-    service_name: str
+    service_name: Optional[str] = None  # Optional - None when all services selected
     time_range: str
