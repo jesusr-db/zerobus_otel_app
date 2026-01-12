@@ -63,7 +63,10 @@ Building a modern observability dashboard for Databricks Apps that:
 
 ### ❌ Not Started
 
-**Phase 3: Time-Based Investigation View** (PRD P0):
+**Phase 3: Time-Based Investigation View and cleanup phase2** (PRD P0):
+- METRICS view is only showing last events - and not aggregating based on timeframe
+- fix dependency map panel
+- add secret scope for OTEL_TOKEN
 - Three-panel unified timeline (Metrics + Traces + Logs)
 - Interactive timeline with zoom/pan
 - Cross-signal correlation features
