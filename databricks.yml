@@ -12,7 +12,8 @@ sync:
 variables:
   warehouse_id:
     description: SQL Warehouse ID for the app
-    default: "8baced1ff014912d"
+    # default: "8baced1ff014912d"
+    default: "5067b513037fbf07"
   catalog_name:
     description: Catalog name for observability tables
     default: "jmr_demo"

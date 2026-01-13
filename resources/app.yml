@@ -6,6 +6,11 @@ resources:
       source_code_path: ${workspace.file_path}
       
       resources:
+        - name: otel-token
+          secret:
+            scope: jmr_demo
+            key: otel_token
+            permission: READ
         - name: sql-warehouse
           sql_warehouse:
             id: ${var.warehouse_id}

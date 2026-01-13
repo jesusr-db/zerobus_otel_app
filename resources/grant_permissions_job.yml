@@ -17,7 +17,7 @@ resources:
         - name: LAKEBASE_INSTANCE_NAME
           default: zerobus-dev
         - name: LAKEBASE_HOST
-          default: instance-7c3b2c57-f707-4188-acf5-a0101ad63c36.database.cloud.databricks.com
+          default: instance-fbdab8c4-86f6-400a-ac42-632a91017360.database.cloud.databricks.com
         - name: LAKEBASE_PORT
           default: "5432"
         - name: LAKEBASE_DATABASE_NAME

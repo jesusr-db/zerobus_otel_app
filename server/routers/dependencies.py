@@ -36,12 +36,9 @@ async def get_dependency_graph(
     
     if DATA_BACKEND == "lakebase":
         data_manager = LakebaseManager(user_token=user_token)
-        # Note: service_dependencies table may not exist in Lakebase
-        # This router will return empty results if the table is not synced
-        logger.warning("Dependencies router using Lakebase - service_dependencies table may not exist")
         query = f"""
         WITH current_spans AS (
-          SELECT 
+          SELECT
             span_value->>'service_name' as service_name,
             (span_value->>'duration_ms')::float as duration_ms,
             (span_value->>'is_error')::boolean as is_error,
@@ -51,12 +48,12 @@ async def get_dependency_graph(
           WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
         ),
         baseline_spans AS (
-          SELECT 
+          SELECT
             span_value->>'service_name' as service_name,
             (span_value->>'duration_ms')::float as duration_ms
           FROM zerobus_sdp.traces_assembled_synced t
           CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-          WHERE t.trace_start >= NOW() - INTERVAL '{interval}' * 2
+          WHERE t.trace_start >= NOW() - INTERVAL '{interval}' - INTERVAL '{interval}'
             AND t.trace_start < NOW() - INTERVAL '{interval}'
         ),
         current_metrics AS (
@@ -83,7 +80,7 @@ async def get_dependency_graph(
             c.error_count,
             c.request_count,
             c.error_rate,
-            CASE 
+            CASE
               WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
               WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
               ELSE 'healthy'
@@ -92,19 +89,34 @@ async def get_dependency_graph(
           LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
         ),
         all_services AS (
-          SELECT DISTINCT service_name FROM service_health
+          SELECT DISTINCT source_service as service_name FROM zerobus_sdp.service_dependencies_synced
+          UNION
+          SELECT DISTINCT target_service as service_name FROM zerobus_sdp.service_dependencies_synced
         )
-        SELECT 
+        SELECT
           'node' as row_type,
           s.service_name as id,
           COALESCE(h.health_status, 'healthy') as health,
-          COALESCE(h.error_rate, 0.0) as errorRate,
-          COALESCE(h.request_count, 0) as requestCount,
+          COALESCE(h.error_rate, 0.0) as "errorRate",
+          COALESCE(h.request_count, 0) as "requestCount",
           NULL as source,
           NULL as target,
-          NULL as callCount
+          NULL as "callCount"
         FROM all_services s
         LEFT JOIN service_health h ON s.service_name = h.service_name
+
+        UNION ALL
+
+        SELECT
+          'edge' as row_type,
+          NULL as id,
+          NULL as health,
+          NULL as "errorRate",
+          NULL as "requestCount",
+          d.source_service as source,
+          d.target_service as target,
+          d.call_count as "callCount"
+        FROM zerobus_sdp.service_dependencies_synced d
         """
     else:
         data_manager = WarehouseManager(user_token=user_token)
@@ -161,9 +173,9 @@ async def get_dependency_graph(
       LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
     ),
     all_services AS (
-      SELECT DISTINCT source_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies
+      SELECT DISTINCT source_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies_synced
       UNION
-      SELECT DISTINCT target_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies
+      SELECT DISTINCT target_service as service_name FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies_synced
     )
     SELECT 
       'node' as row_type,
@@ -179,7 +191,7 @@ async def get_dependency_graph(
     
     UNION ALL
     
-    SELECT 
+    SELECT
       'edge' as row_type,
       NULL as id,
       NULL as health,
@@ -188,7 +200,7 @@ async def get_dependency_graph(
       d.source_service as source,
       d.target_service as target,
       d.call_count as callCount
-    FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
+    FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies_synced d
     """
     
     try:

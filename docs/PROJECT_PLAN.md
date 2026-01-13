@@ -66,7 +66,7 @@ Building a modern observability dashboard for Databricks Apps that:
 **Phase 3: Time-Based Investigation View and cleanup phase2** (PRD P0):
 - METRICS view is only showing last events - and not aggregating based on timeframe
 - fix dependency map panel
-- add secret scope for OTEL_TOKEN
+- ✅ add secret scope for OTEL_TOKEN (COMPLETED - see backlog for details)
 - Three-panel unified timeline (Metrics + Traces + Logs)
 - Interactive timeline with zoom/pan
 - Cross-signal correlation features
@@ -1768,3 +1768,263 @@ This comprehensive project plan outlines:
 - ✅ **Success criteria**: Performance targets and metrics
 
 **Next Steps**: Start with Week 1 critical blockers, then proceed with core features and AI chatbot implementation.
+
+---
+
+## Backlog: Issues & Technical Debt
+
+### ✅ Issue #001: Databricks Secrets Configuration in Asset Bundles
+
+**Date Resolved**: 2026-01-12
+**Priority**: P0 (Deployment Blocker)
+**Status**: RESOLVED
+
+**Problem Summary**:
+Deployment failed with error: "Error reading app.yml file, please ensure it is in the correct format" when attempting to reference Databricks secrets in a Databricks Asset Bundle configuration.
+
+**Root Cause**:
+Incorrect secrets reference format in app.yml. Used template syntax `value: {{secrets.otel-token}}` instead of proper Databricks Apps resource reference pattern.
+
+**Incorrect Implementation**:
+
+```yaml
+# ❌ WRONG - app.yml (root)
+env:
+  - name: DATABRICKS_OTEL_TOKEN
+    value: {{secrets.otel-token}}  # Incorrect template syntax
+
+resources:
+  - name: otel-token
+    secret:
+      scope: jmr_demo
+      key: otel_token
+      permission: READ
+```
+
+**Correct Implementation**:
+
+```yaml
+# ✅ CORRECT - app.yml (root)
+env:
+  - name: DATABRICKS_OTEL_TOKEN
+    valueFrom: otel-token  # References resource name
+
+# ✅ CORRECT - resources/app.yml (bundle configuration)
+resources:
+  apps:
+    o11y_jmr_app:
+      resources:
+        - name: otel-token
+          secret:
+            scope: jmr_demo
+            key: otel_token
+            permission: READ
+```
+
+**Key Learnings**:
+
+1. **Databricks Asset Bundles Architecture**:
+   - Root `app.yml`: Contains runtime configuration (env vars, command)
+   - `resources/app.yml`: Contains bundle resource definitions (secrets, warehouses, databases)
+   - Both files work together during deployment
+
+2. **Secret Reference Pattern**:
+   - Use `valueFrom: <resource-name>` NOT `value: {{secrets.xxx}}`
+   - The resource name must match between `resources/app.yml` and `app.yml`
+   - Databricks injects secrets as environment variables at runtime
+
+3. **Documentation Source**:
+   - Official Databricks docs: <https://docs.databricks.com/aws/en/dev-tools/databricks-apps/secrets>
+   - Retrieved via Context7 MCP for accurate, version-specific guidance
+
+**Files Modified**:
+
+- `app.yml:35-36` - Changed from `value:` to `valueFrom:`
+- `resources/app.yml:8-12` - Added secret resource definition
+
+**Verification Command**:
+
+```bash
+# Verify secret scope and key exist
+databricks secrets list-scopes
+databricks secrets list-secrets jmr_demo
+
+# Deploy with corrected configuration
+databricks bundle deploy --target dev
+```
+
+**Prevention**:
+
+- Always use Context7 MCP to verify Databricks Apps configuration syntax
+- Reference official documentation for resource configuration patterns
+- Test bundle validation before deployment: `databricks bundle validate`
+
+**Related Documentation**:
+
+- Databricks Apps Secrets: <https://docs.databricks.com/aws/en/dev-tools/databricks-apps/secrets>
+- Environment Variables: <https://docs.databricks.com/aws/en/dev-tools/databricks-apps/environment-variables>
+- Bundle Resources: <https://docs.databricks.com/aws/en/dev-tools/bundles/resources>
+
+---
+
+### ⏳ Issue #002: Lakebase Host Auto-Detection
+
+**Date Created**: 2026-01-12
+**Priority**: P0 (Deployment Automation)
+**Status**: BACKLOG - Not Started
+
+**Problem Summary**:
+The Lakebase database host is currently hardcoded in `app.yml`, which prevents deployment automation and requires manual updates when the database instance changes or is recreated.
+
+**Current Hardcoded Configuration**:
+
+```yaml
+# app.yml:21-22 - HARDCODED HOST
+- name: LAKEBASE_HOST
+  value: instance-dc3ca2cf-029d-4fc3-a647-020486cc7d3e.database.cloud.databricks.com
+```
+
+**Impact**:
+
+- Deployment fails when database instance is recreated (new host)
+- Requires manual intervention to update `app.yml`
+- Breaks CI/CD automation
+- Risk of deploying with incorrect host configuration
+- Cannot reliably switch between dev/staging/prod database instances
+
+**Proposed Solution**:
+
+Implement auto-detection of Lakebase host using Databricks SDK during application initialization:
+
+```python
+# server/services/lakebase_manager.py:44
+def _auto_detect_host(self) -> str:
+    """
+    Auto-discover Lakebase instance host using Databricks SDK
+
+    Returns:
+        str: Database instance host (e.g., instance-xxx.database.cloud.databricks.com)
+
+    Raises:
+        ValueError: If instance not found or connection details unavailable
+    """
+    from databricks.sdk import WorkspaceClient
+
+    client = WorkspaceClient()
+
+    try:
+        # Get instance details by name
+        instance = client.database_instances.get(self.instance_name)
+
+        # Extract host from connection details
+        if instance.connection_details and instance.connection_details.host:
+            host = instance.connection_details.host
+            logger.info(f"Auto-detected Lakebase host: {host}")
+            return host
+        else:
+            raise ValueError(f"No connection details found for instance: {self.instance_name}")
+
+    except Exception as e:
+        logger.error(f"Failed to auto-detect Lakebase host: {e}")
+        raise ValueError(f"Could not auto-detect host for instance '{self.instance_name}': {e}")
+```
+
+**Implementation Plan**:
+
+1. **Update LakebaseManager** (`server/services/lakebase_manager.py`):
+   - Add `_auto_detect_host()` method
+   - Call during `__init__` if `LAKEBASE_HOST` env var is not set
+   - Add fallback to env var for local development override
+
+2. **Remove Hardcoded Host** (`app.yml:21-22`):
+   - Remove `LAKEBASE_HOST` environment variable entirely
+   - Or change to optional override: `LAKEBASE_HOST: ""` (empty = auto-detect)
+
+3. **Update Grant Permissions Job** (`resources/grant_permissions_job.yml:20`):
+   - Remove hardcoded host reference
+   - Use auto-detection in job script as well
+
+4. **Add Validation Endpoint** (`server/routers/system.py`):
+   - Add `/api/system/lakebase-info` endpoint
+   - Return detected host, instance name, connection status
+   - Useful for debugging deployment issues
+
+**Testing Strategy**:
+
+```bash
+# Test auto-detection locally
+uv run python -c "
+from server.services.lakebase_manager import LakebaseManager
+manager = LakebaseManager()
+print(f'Detected host: {manager.db_host}')
+print(f'Instance name: {manager.instance_name}')
+"
+
+# Test with explicit override
+export LAKEBASE_HOST="custom-host.cloud.databricks.com"
+uv run python -c "
+from server.services.lakebase_manager import LakebaseManager
+manager = LakebaseManager()
+assert manager.db_host == 'custom-host.cloud.databricks.com', 'Override failed'
+print('Override works correctly')
+"
+
+# Test deployment with auto-detection
+databricks bundle deploy --target dev
+# Check logs for "Auto-detected Lakebase host: ..."
+uv run python dba_logz.py <app-url> --search "Auto-detected" --duration 30
+```
+
+**Files to Modify**:
+
+- `server/services/lakebase_manager.py:44` - Add `_auto_detect_host()` method
+- `server/services/lakebase_manager.py:__init__` - Call auto-detect if host not provided
+- `app.yml:21-22` - Remove or make optional `LAKEBASE_HOST`
+- `resources/grant_permissions_job.yml:20` - Remove hardcoded host
+- `server/routers/system.py` - Add validation endpoint (optional)
+
+**Dependencies**:
+
+- `databricks.sdk` (already installed)
+- `WorkspaceClient` must have permissions to read database instance metadata
+- Service principal needs `CAN_USE` on database instance resource
+
+**Risks & Mitigation**:
+
+- **Risk**: Auto-detection fails during startup → App crashes
+  - **Mitigation**: Add retry logic (3 attempts with exponential backoff)
+  - **Mitigation**: Provide clear error messages for debugging
+  - **Mitigation**: Support env var override for emergency fixes
+
+- **Risk**: SDK API changes break auto-detection
+  - **Mitigation**: Add comprehensive error handling
+  - **Mitigation**: Log detailed error information
+  - **Mitigation**: Support fallback to env var
+
+- **Risk**: Performance impact from SDK call on every startup
+  - **Mitigation**: Cache result in memory (single call per app lifetime)
+  - **Mitigation**: SDK call is fast (<100ms typically)
+
+**Success Criteria**:
+
+- ✅ App starts successfully with auto-detected host
+- ✅ No hardcoded hosts in configuration files
+- ✅ Deployment succeeds without manual host updates
+- ✅ Override via env var still works for edge cases
+- ✅ Clear error messages if auto-detection fails
+- ✅ Documented in deployment guide
+
+**Related Issues**:
+
+- See also: Task #1 in Critical Path (Week 1) - Same issue
+- Blocks: CI/CD automation, multi-environment deployments
+- Related: Issue #003 (future) - Auto-detect warehouse ID
+
+**Priority Justification**:
+
+P0 because:
+
+- Blocks deployment automation (manual intervention required)
+- High risk of production incidents (wrong host = app failure)
+- Affects developer productivity (manual config updates)
+- Required for proper multi-environment support (dev/staging/prod)
