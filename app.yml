@@ -22,27 +22,10 @@ env:
     value: instance-fbdab8c4-86f6-400a-ac42-632a91017360.database.cloud.databricks.com
   - name: LAKEBASE_PORT
     value: "5432"
-  - name: OTEL_SERVICE_NAME
-    value: o11y-app-backend
   - name: ENVIRONMENT
     value: production
-  - name: OTEL_CATALOG
-    value: jmr_demo
-  - name: OTEL_SCHEMA
-    value: zerobus
-  - name: OTEL_TABLE_PREFIX
-    value: otel
-  - name: DATABRICKS_OTEL_TOKEN
-    valueFrom: otel-token
-  - name: DATABRICKS_HOST
-    value: https://fe-vm-vdm-classic-rikfy0.cloud.databricks.com
 
 resources:
-  - name: otel-token
-    secret:
-      scope: jmr_demo
-      key: otel_token
-      permission: READ
   - name: lakebase-instance
     database_instance:
       id: zerobus-dev
