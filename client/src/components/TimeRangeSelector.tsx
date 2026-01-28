@@ -4,8 +4,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { TimeRange } from '../types/observability';
+} from "@/components/ui/select";
+import { TimeRange } from "../types/observability";
 
 interface TimeRangeSelectorProps {
   value: TimeRange;
@@ -14,10 +14,10 @@ interface TimeRangeSelectorProps {
 
 export function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
   const options: Array<{ value: TimeRange; label: string }> = [
-    { value: '5m', label: '5 minutes' },
-    { value: '1h', label: '1 hour' },
-    { value: '1d', label: '1 day' },
-    { value: '1w', label: '1 week' },
+    { value: "5m", label: "5 minutes" },
+    { value: "1h", label: "1 hour" },
+    { value: "1d", label: "1 day" },
+    { value: "1w", label: "1 week" },
   ];
 
   return (

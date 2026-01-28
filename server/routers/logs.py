@@ -7,7 +7,7 @@ import json
 import re
 from server.models.logs import LogEntry, LogsResponse, SeverityTimelineResponse, SeverityTimelinePoint
 from server.services.lakebase_manager import LakebaseManager
-from server.config import DATA_BACKEND
+from server.config import LAKEBASE_SCHEMA_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,12 +17,16 @@ SearchMode = Literal["simple", "advanced"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
-    """Convert time range to SQL interval string and seconds."""
+    """
+    Convert time range to SQL interval string and seconds.
+
+    Note: PostgreSQL requires lowercase with plural forms for quantities > 1
+    """
     intervals = {
-        "5m": ("5 MINUTE", 300),
-        "1h": ("1 HOUR", 3600),
-        "1d": ("1 DAY", 86400),
-        "1w": ("7 DAY", 604800),
+        "5m": ("5 minutes", 300),
+        "1h": ("1 hour", 3600),
+        "1d": ("1 day", 86400),
+        "1w": ("7 days", 604800),
     }
     return intervals[time_range]
 
@@ -168,10 +172,6 @@ async def get_logs(
     - Pagination
     """
     user_token = request.headers.get("X-Forwarded-Access-Token")
-
-    if DATA_BACKEND != "lakebase":
-        raise HTTPException(status_code=501, detail="Logs only supported with Lakebase backend")
-
     lakebase = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
 
@@ -215,7 +215,7 @@ async def get_logs(
         # Get total count
         count_query = f"""
         SELECT COUNT(*) as total
-        FROM zerobus_sdp.logs_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
         WHERE {where_sql}
         """
 
@@ -227,7 +227,7 @@ async def get_logs(
         SELECT
             severity_text,
             COUNT(*) as count
-        FROM zerobus_sdp.logs_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
         WHERE {where_sql}
         GROUP BY severity_text
         """
@@ -252,7 +252,7 @@ async def get_logs(
             body,
             service_name,
             attributes
-        FROM zerobus_sdp.logs_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
         WHERE {where_sql}
         ORDER BY log_timestamp DESC
         LIMIT %s OFFSET %s
@@ -327,10 +327,6 @@ async def get_severity_timeline(
     - 1w range → 1-day buckets
     """
     user_token = request.headers.get("X-Forwarded-Access-Token")
-
-    if DATA_BACKEND != "lakebase":
-        raise HTTPException(status_code=501, detail="Logs only supported with Lakebase backend")
-
     lakebase = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
     granularity = get_timeline_granularity(time_range)
@@ -356,7 +352,7 @@ async def get_severity_timeline(
             COUNT(*) FILTER (WHERE severity_text = 'WARN') as WARN,
             COUNT(*) FILTER (WHERE severity_text = 'INFO') as INFO,
             COUNT(*) FILTER (WHERE severity_text = 'DEBUG') as DEBUG
-        FROM zerobus_sdp.logs_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
         WHERE {where_clause}
         GROUP BY bucket
         ORDER BY bucket ASC

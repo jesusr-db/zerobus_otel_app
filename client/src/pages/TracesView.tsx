@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useTimeRange } from '../contexts/TimeRangeContext';
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTimeRange } from "../contexts/TimeRangeContext";
 
 interface TraceInfo {
   trace_id: string;
@@ -16,29 +16,36 @@ interface TracesViewProps {
 
 export function TracesView({ onTraceClick }: TracesViewProps) {
   const { timeRange } = useTimeRange();
-  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>("");
 
-  const { data: allTraces, isLoading: allTracesLoading } = useQuery<TraceInfo[]>({
-    queryKey: ['all-traces', timeRange],
+  const { data: allTraces, isLoading: allTracesLoading } = useQuery<
+    TraceInfo[]
+  >({
+    queryKey: ["all-traces", timeRange],
     queryFn: async () => {
       const response = await fetch(`/api/traces?time_range=${timeRange}`, {
-        credentials: 'include',
+        credentials: "include",
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch traces');
+        throw new Error("Failed to fetch traces");
       }
       return response.json();
     },
   });
 
-  const { data: serviceTraces, isLoading: serviceTracesLoading } = useQuery<TraceInfo[]>({
-    queryKey: ['service-traces', selectedService, timeRange],
+  const { data: serviceTraces, isLoading: serviceTracesLoading } = useQuery<
+    TraceInfo[]
+  >({
+    queryKey: ["service-traces", selectedService, timeRange],
     queryFn: async () => {
-      const response = await fetch(`/api/services/${selectedService}/traces?time_range=${timeRange}`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/api/services/${selectedService}/traces?time_range=${timeRange}`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) {
-        throw new Error('Failed to fetch service traces');
+        throw new Error("Failed to fetch service traces");
       }
       return response.json();
     },
@@ -49,9 +56,7 @@ export function TracesView({ onTraceClick }: TracesViewProps) {
   const isLoading = selectedService ? serviceTracesLoading : allTracesLoading;
 
   const uniqueServices = Array.from(
-    new Set(
-      (allTraces || []).flatMap(trace => trace.services_involved)
-    )
+    new Set((allTraces || []).flatMap((trace) => trace.services_involved)),
   ).sort();
 
   return (
@@ -99,11 +104,21 @@ export function TracesView({ onTraceClick }: TracesViewProps) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Trace ID</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Start Time</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">Duration</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">Spans</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Services</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                    Trace ID
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                    Start Time
+                  </th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+                    Duration
+                  </th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+                    Spans
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                    Services
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -128,7 +143,10 @@ export function TracesView({ onTraceClick }: TracesViewProps) {
                     <td className="px-4 py-3 text-sm text-muted-foreground">
                       <div className="flex flex-wrap gap-1">
                         {trace.services_involved.slice(0, 5).map((svc) => (
-                          <span key={svc} className="inline-flex rounded px-1.5 py-0.5 text-xs bg-muted">
+                          <span
+                            key={svc}
+                            className="inline-flex rounded px-1.5 py-0.5 text-xs bg-muted"
+                          >
                             {svc}
                           </span>
                         ))}

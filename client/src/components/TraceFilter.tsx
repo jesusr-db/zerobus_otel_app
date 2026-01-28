@@ -1,6 +1,6 @@
-import { Input } from './ui/input';
-import { Button } from './ui/button';
-import { X, Link2 } from 'lucide-react';
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { X, Link2 } from "lucide-react";
 
 interface TraceFilterProps {
   traceId: string;
@@ -26,7 +26,7 @@ export function TraceFilter({ traceId, onChange, onClear }: TraceFilterProps) {
         placeholder="Filter by trace ID..."
         value={traceId}
         onChange={(e) => onChange(e.target.value)}
-        className={`pl-10 pr-10 ${hasInvalidFormat ? 'border-destructive' : ''}`}
+        className={`pl-10 pr-10 ${hasInvalidFormat ? "border-destructive" : ""}`}
       />
       {traceId && (
         <Button

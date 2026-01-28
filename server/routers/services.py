@@ -2,9 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Literal
 import logging
 from server.models.observability import ServiceHealth, ServiceMetricsDetail
-from server.services.warehouse_manager import WarehouseManager
 from server.services.lakebase_manager import LakebaseManager
-from server.config import OBSERVABILITY_TABLE_PREFIX, DATA_BACKEND
+from server.config import LAKEBASE_SCHEMA_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,24 +15,16 @@ def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
     """
     Convert time range to SQL interval string and seconds.
     Returns (interval_string, seconds)
+
+    Note: PostgreSQL requires lowercase with plural forms for quantities > 1
     """
     intervals = {
-        "5m": ("5 MINUTE", 300),
-        "1h": ("1 HOUR", 3600),
-        "1d": ("1 DAY", 86400),
-        "1w": ("7 DAY", 604800),
+        "5m": ("5 minutes", 300),
+        "1h": ("1 hour", 3600),
+        "1d": ("1 day", 86400),
+        "1w": ("7 days", 604800),
     }
     return intervals[time_range]
-
-
-def get_data_manager(user_token: str):
-    """Get the appropriate data manager based on DATA_BACKEND config."""
-    if DATA_BACKEND == "lakebase":
-        logger.info("Using Lakebase backend")
-        return LakebaseManager(user_token=user_token)
-    else:
-        logger.info("Using SQL Warehouse backend")
-        return WarehouseManager(user_token=user_token)
 
 
 @router.get("/list")
@@ -42,32 +33,31 @@ async def get_services(
     time_range: TimeRange = Query(default="1h", description="Time range for metrics")
 ) -> list[ServiceHealth]:
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    data_manager = get_data_manager(user_token)
+    data_manager = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
-    
-    # Use native query based on backend
-    if DATA_BACKEND == "lakebase":
-        # Native PostgreSQL query for Lakebase - combines traces, logs, and metrics
-        # Uses traces_silver_synced (real-time individual spans) instead of traces_assembled_synced (batch)
-        query = f"""
+
+    # Use Lakebase (PostgreSQL) backend only
+    # Native PostgreSQL query - combines traces, logs, and metrics
+    # Uses traces_silver_synced (real-time individual spans) instead of traces_assembled_synced (batch)
+    query = f"""
         WITH trace_services AS (
           SELECT DISTINCT
             service_name
-          FROM zerobus_sdp.traces_silver_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
           WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
         ),
         log_services AS (
           SELECT DISTINCT
             service_name
-          FROM zerobus_sdp.logs_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
           WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
         ),
         metric_services AS (
           SELECT DISTINCT
             service_name
-          FROM zerobus_sdp.metrics_1min_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
           WHERE window_start >= NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
         ),
@@ -84,7 +74,7 @@ async def get_services(
             duration_ms,
             is_error,
             start_timestamp
-          FROM zerobus_sdp.traces_silver_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
           WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
         ),
@@ -92,7 +82,7 @@ async def get_services(
           SELECT
             service_name,
             duration_ms
-          FROM zerobus_sdp.traces_silver_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
           WHERE start_timestamp >= NOW() - INTERVAL '{interval}' * 2
             AND start_timestamp < NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
@@ -101,7 +91,7 @@ async def get_services(
           SELECT
             service_name,
             COUNT(*) as log_error_count
-          FROM zerobus_sdp.logs_synced
+          FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
           WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
             AND service_name IS NOT NULL
             AND severity_text IN ('ERROR', 'FATAL', 'CRITICAL')
@@ -151,69 +141,6 @@ async def get_services(
         LEFT JOIN baseline_metrics b ON s.service_name = b.service_name
         ORDER BY COALESCE(m.request_count, 0) DESC, s.service_name
         """
-    else:
-        # Spark SQL query for Warehouse
-        query = f"""
-        WITH current_spans AS (
-          SELECT 
-            span.service_name,
-            span.duration_ms,
-            span.is_error,
-            t.trace_start
-          FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-          LATERAL VIEW explode(span_details) AS span
-          WHERE t.trace_start >= NOW() - INTERVAL {interval}
-        ),
-        baseline_spans AS (
-          SELECT 
-            span.service_name,
-            span.duration_ms
-          FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-          LATERAL VIEW explode(span_details) AS span
-          WHERE t.trace_start >= NOW() - INTERVAL {interval} * 2
-            AND t.trace_start < NOW() - INTERVAL {interval}
-        ),
-        current_metrics AS (
-          SELECT
-            service_name,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
-            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as latency_p95,
-            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as latency_p99,
-            AVG(duration_ms) as avg_duration,
-            MAX(duration_ms) as max_duration,
-            SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
-            COUNT(*) as request_count
-          FROM current_spans
-          GROUP BY service_name
-        ),
-        baseline_metrics AS (
-          SELECT
-            service_name,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
-            COUNT(*) / {seconds} as baseline_rps
-          FROM baseline_spans
-          GROUP BY service_name
-        )
-        SELECT 
-          c.service_name,
-          c.latency_p50 as current_latency_p50,
-          c.latency_p95 as current_latency_p95,
-      c.latency_p99 as current_latency_p99,
-      c.avg_duration as avg_duration_ms,
-      c.max_duration as max_duration_ms,
-      c.error_count,
-      c.request_count,
-      CAST(c.error_count AS FLOAT) / NULLIF(c.request_count, 0) as error_rate,
-      c.request_count / {seconds} as requests_per_second,
-      CASE 
-        WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
-        WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
-        ELSE 'healthy'
-      END as health_status
-    FROM current_metrics c
-    LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
-    ORDER BY c.request_count DESC
-    """
     
     try:
         results = data_manager.execute_query(query)
@@ -233,20 +160,24 @@ async def get_service_metrics(
     service_name: str,
     time_range: TimeRange = Query(default="1h", description="Time range for metrics")
 ) -> ServiceMetricsDetail:
+    from server.routers.metrics_kpis import get_bucket_size
+
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    warehouse_manager = WarehouseManager(user_token=user_token)
+    lakebase_manager = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
-    
+    bucket_interval, bucket_seconds = get_bucket_size(time_range)
+
+    # Convert to PostgreSQL-compatible queries for Lakebase
     current_query = f"""
     WITH service_spans AS (
-      SELECT 
-        span.duration_ms,
-        span.is_error,
+      SELECT
+        (span_value->>'duration_ms')::float as duration_ms,
+        (span_value->>'is_error')::boolean as is_error,
         t.trace_start
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE span.service_name = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL {interval}
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE span_value->>'service_name' = '{service_name}'
+        AND t.trace_start >= NOW() - INTERVAL '{interval}'
     )
     SELECT
       COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
@@ -260,17 +191,17 @@ async def get_service_metrics(
       COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
     FROM service_spans
     """
-    
+
     trends_query = f"""
     WITH service_spans AS (
-      SELECT 
-        span.duration_ms,
-        span.is_error,
-        date_trunc('minute', t.trace_start) as time_bucket
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE span.service_name = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL {interval}
+      SELECT
+        (span_value->>'duration_ms')::float as duration_ms,
+        (span_value->>'is_error')::boolean as is_error,
+        to_timestamp(floor(extract(epoch from t.trace_start) / {bucket_seconds}) * {bucket_seconds}) as time_bucket
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE span_value->>'service_name' = '{service_name}'
+        AND t.trace_start >= NOW() - INTERVAL '{interval}'
     )
     SELECT
       time_bucket as timestamp,
@@ -282,17 +213,17 @@ async def get_service_metrics(
     GROUP BY time_bucket
     ORDER BY time_bucket
     """
-    
+
     baseline_query = f"""
     WITH service_spans AS (
-      SELECT 
-        span.duration_ms,
-        span.is_error
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE span.service_name = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL {interval} * 2
-        AND t.trace_start < NOW() - INTERVAL {interval}
+      SELECT
+        (span_value->>'duration_ms')::float as duration_ms,
+        (span_value->>'is_error')::boolean as is_error
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE span_value->>'service_name' = '{service_name}'
+        AND t.trace_start >= NOW() - INTERVAL '{interval}' * 2
+        AND t.trace_start < NOW() - INTERVAL '{interval}'
     )
     SELECT
       COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
@@ -306,21 +237,21 @@ async def get_service_metrics(
       COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
     FROM service_spans
     """
-    
+
     try:
         from server.models.observability import MetricsSnapshot, MetricsTimeSeries
-        
-        current_results = warehouse_manager.execute_query(current_query)
-        trends_results = warehouse_manager.execute_query(trends_query)
-        baseline_results = warehouse_manager.execute_query(baseline_query)
-        
+
+        current_results = lakebase_manager.execute_query(current_query)
+        trends_results = lakebase_manager.execute_query(trends_query)
+        baseline_results = lakebase_manager.execute_query(baseline_query)
+
         if not current_results:
             raise HTTPException(status_code=404, detail=f"No data found for service: {service_name}")
-        
+
         current = MetricsSnapshot(**current_results[0])
         trends = [MetricsTimeSeries(**row) for row in trends_results]
         baseline = MetricsSnapshot(**baseline_results[0]) if baseline_results else current
-        
+
         return ServiceMetricsDetail(
             service_name=service_name,
             current=current,
@@ -338,28 +269,29 @@ async def get_service_dependencies(
     service_name: str
 ):
     from server.models.observability import ServiceDependencies, DependencyInfo
-    
+
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    warehouse_manager = WarehouseManager(user_token=user_token)
-    
+    lakebase_manager = LakebaseManager(user_token=user_token)
+
+    # Convert to PostgreSQL-compatible query for Lakebase
     query = f"""
     WITH current_spans AS (
-      SELECT 
-        span.service_name,
-        span.duration_ms,
+      SELECT
+        span_value->>'service_name' as service_name,
+        (span_value->>'duration_ms')::float as duration_ms,
         t.trace_start
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE t.trace_start >= NOW() - INTERVAL 1 HOUR
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE t.trace_start >= NOW() - INTERVAL '1 hour'
     ),
     baseline_spans AS (
-      SELECT 
-        span.service_name,
-        span.duration_ms
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE t.trace_start >= NOW() - INTERVAL 2 HOUR
-        AND t.trace_start < NOW() - INTERVAL 1 HOUR
+      SELECT
+        span_value->>'service_name' as service_name,
+        (span_value->>'duration_ms')::float as duration_ms
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE t.trace_start >= NOW() - INTERVAL '2 hours'
+        AND t.trace_start < NOW() - INTERVAL '1 hour'
     ),
     current_metrics AS (
       SELECT
@@ -378,9 +310,9 @@ async def get_service_dependencies(
       GROUP BY service_name
     ),
     service_health AS (
-      SELECT 
+      SELECT
         c.service_name,
-        CASE 
+        CASE
           WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
           WHEN c.request_count / 3600 > COALESCE(b.baseline_rps, c.request_count / 3600) THEN 'warning'
           ELSE 'healthy'
@@ -389,33 +321,33 @@ async def get_service_dependencies(
       LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
     ),
     inbound_deps AS (
-      SELECT 
+      SELECT
         d.target_service as service_name,
         d.source_service as related_service,
         d.call_count,
         COALESCE(h.health_status, 'unknown') as health_status
-      FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
+      FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced d
       LEFT JOIN service_health h ON d.source_service = h.service_name
       WHERE d.target_service = '{service_name}'
     ),
     outbound_deps AS (
-      SELECT 
+      SELECT
         d.source_service as service_name,
         d.target_service as related_service,
         d.call_count,
         COALESCE(h.health_status, 'unknown') as health_status
-      FROM {OBSERVABILITY_TABLE_PREFIX}.service_dependencies d
+      FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced d
       LEFT JOIN service_health h ON d.target_service = h.service_name
       WHERE d.source_service = '{service_name}'
     )
-    SELECT 
+    SELECT
       'inbound' as direction,
       related_service as service_name,
       call_count,
       health_status
     FROM inbound_deps
     UNION ALL
-    SELECT 
+    SELECT
       'outbound' as direction,
       related_service as service_name,
       call_count,
@@ -423,9 +355,9 @@ async def get_service_dependencies(
     FROM outbound_deps
     ORDER BY direction, call_count DESC
     """
-    
+
     try:
-        results = data_manager.execute_query(query)
+        results = lakebase_manager.execute_query(query)
         if not results:
             logger.info(f"No dependencies found for service: {service_name}")
             return ServiceDependencies(
@@ -433,7 +365,7 @@ async def get_service_dependencies(
                 inbound=[],
                 outbound=[]
             )
-        
+
         inbound = [
             DependencyInfo(
                 service_name=row['service_name'],
@@ -442,7 +374,7 @@ async def get_service_dependencies(
             )
             for row in results if row['direction'] == 'inbound'
         ]
-        
+
         outbound = [
             DependencyInfo(
                 service_name=row['service_name'],
@@ -451,7 +383,7 @@ async def get_service_dependencies(
             )
             for row in results if row['direction'] == 'outbound'
         ]
-        
+
         return ServiceDependencies(
             service_name=service_name,
             inbound=inbound,
@@ -469,31 +401,33 @@ async def get_service_traces(
     time_range: TimeRange = Query(default="1h", description="Time range for traces")
 ):
     from server.models.observability import TraceInfo
-    
+
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    warehouse_manager = WarehouseManager(user_token=user_token)
+    lakebase_manager = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
-    
+
+    # Convert to PostgreSQL-compatible query for Lakebase
+    # Use JSONB containment operator to check if service is in services_involved array
     query = f"""
-    SELECT 
+    SELECT
       trace_id,
       trace_start,
       services_involved,
       total_trace_duration_ms as total_duration_ms,
       span_count
-    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
-    WHERE array_contains(services_involved, '{service_name}')
-      AND trace_start >= NOW() - INTERVAL {interval}
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
+    WHERE services_involved::jsonb @> '"{service_name}"'::jsonb
+      AND trace_start >= NOW() - INTERVAL '{interval}'
     ORDER BY trace_start DESC
     LIMIT 100
     """
-    
+
     try:
-        results = data_manager.execute_query(query)
+        results = lakebase_manager.execute_query(query)
         if not results:
             logger.info(f"No traces found for service: {service_name}")
             return []
-        
+
         return [TraceInfo(**row) for row in results]
     except Exception as e:
         logger.error(f"Traces query failed for {service_name}: {str(e)}", exc_info=True)
@@ -506,36 +440,37 @@ async def get_trace_detail(
     trace_id: str
 ):
     from server.models.observability import TraceDetail, SpanDetail
-    
+
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    warehouse_manager = WarehouseManager(user_token=user_token)
-    
+    lakebase_manager = LakebaseManager(user_token=user_token)
+
+    # Convert to PostgreSQL-compatible queries for Lakebase
     trace_query = f"""
-    SELECT 
+    SELECT
       trace_id,
       trace_start
-    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
     WHERE trace_id = '{trace_id}'
     LIMIT 1
     """
-    
+
     spans_query = f"""
-    SELECT 
+    SELECT
       service_name,
       SUM(duration_ms) as total_duration_ms
-    FROM {OBSERVABILITY_TABLE_PREFIX}.traces_silver
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
     WHERE trace_id = '{trace_id}'
     GROUP BY service_name
     ORDER BY total_duration_ms DESC
     """
-    
+
     try:
-        trace_results = warehouse_manager.execute_query(trace_query)
+        trace_results = lakebase_manager.execute_query(trace_query)
         if not trace_results:
             raise HTTPException(status_code=404, detail=f"Trace not found: {trace_id}")
-        
-        spans_results = warehouse_manager.execute_query(spans_query)
-        
+
+        spans_results = lakebase_manager.execute_query(spans_query)
+
         return TraceDetail(
             trace_id=trace_results[0]['trace_id'],
             trace_start=trace_results[0]['trace_start'],

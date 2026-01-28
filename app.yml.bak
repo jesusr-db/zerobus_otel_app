@@ -4,12 +4,6 @@ command: [
 ]
 
 env:
-  - name: CATALOG_NAME
-    value: jmr_demo
-  - name: SCHEMA_NAME
-    value: zerobus_sdp
-  - name: DATA_BACKEND
-    value: lakebase
   - name: LAKEBASE_INSTANCE_NAME
     value: zerobus-dev
   - name: LAKEBASE_DATABASE_NAME
@@ -19,7 +13,7 @@ env:
   - name: LAKEBASE_SCHEMA_NAME
     value: zerobus_sdp
   - name: LAKEBASE_HOST
-    value: instance-fbdab8c4-86f6-400a-ac42-632a91017360.database.cloud.databricks.com
+    value: instance-b6590849-3061-4535-9bdf-ff69e6983e97.database.cloud.databricks.com
   - name: LAKEBASE_PORT
     value: "5432"
   - name: ENVIRONMENT
@@ -29,8 +23,4 @@ resources:
   - name: lakebase-instance
     database_instance:
       id: zerobus-dev
-      permission: CAN_USE
-  - name: warehouse
-    sql_warehouse:
-      auto_detect: true
       permission: CAN_USE

@@ -13,8 +13,8 @@ class LogEntry(BaseModel):
     log_timestamp: datetime
     observed_timestamp: Optional[datetime] = None
     severity_text: Optional[str] = "INFO"
-    body: str
-    service_name: str
+    body: Optional[str] = ""  # Some logs may not have body
+    service_name: Optional[str] = "unknown"  # Some logs may not have service_name
     attributes: Dict[str, Any]  # Parsed from JSON string
 
 

@@ -20,12 +20,33 @@ variables:
   schema_name:
     description: Schema name for observability tables
     default: "zerobus_sdp"
+  database_instance_name: 
+    default: "zerobus-otel" 
+  database_host_name: 
+    default: "instance-2dc1bf6e-f238-41cb-9e5b-dd89120f891e.database.cloud.databricks.com"
 
 targets:
   dev:
     mode: development
     default: true
-    
+    variables: 
+      database_instance_name: "zerobus-dev"
+      database_host_name: "instance-2b89b5e3-a871-4348-a32b-10dc661e94d9.database.cloud.databricks.com"
+      warehouse_id: "5067b513037fbf07"
+
+
+  dogfood:
+    mode: development
+
+    workspace:
+      host: https://e2-dogfood.staging.cloud.databricks.com
+
+    variables:
+      catalog_name: main
+      schema_name: dev_jesus_rodriguez_jmr_demo
+      warehouse_id: "dd43ee29fedd958d"
+      database_instance_name: "zerobus-otel" 
+
   prod:
     mode: production
     workspace:

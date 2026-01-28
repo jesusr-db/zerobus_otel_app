@@ -1,4 +1,4 @@
-import { LogEntry, SeverityLevel } from '../types/logs';
+import { LogEntry, SeverityLevel } from "../types/logs";
 import {
   Table,
   TableBody,
@@ -6,23 +6,23 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from './ui/table';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+} from "./ui/table";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import { ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+} from "./ui/select";
+import { ChevronLeft, ChevronRight, Link2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from './ui/tooltip';
+} from "./ui/tooltip";
 
 interface LogsTableProps {
   logs: LogEntry[];
@@ -52,28 +52,28 @@ export function LogsTable({
   // Severity colors
   const getSeverityColor = (severity: SeverityLevel) => {
     switch (severity) {
-      case 'ERROR':
-        return 'hsl(0, 84%, 60%)';
-      case 'WARN':
-        return 'hsl(30, 80%, 55%)';
-      case 'INFO':
-        return 'hsl(160, 60%, 45%)';
-      case 'DEBUG':
-        return 'hsl(var(--muted-foreground))';
+      case "ERROR":
+        return "hsl(0, 84%, 60%)";
+      case "WARN":
+        return "hsl(30, 80%, 55%)";
+      case "INFO":
+        return "hsl(160, 60%, 45%)";
+      case "DEBUG":
+        return "hsl(var(--muted-foreground))";
       default:
-        return 'hsl(var(--muted-foreground))';
+        return "hsl(var(--muted-foreground))";
     }
   };
 
   // Format timestamp
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
       fractionalSecondDigits: 3,
     });
   };
@@ -81,7 +81,7 @@ export function LogsTable({
   // Truncate message
   const truncateMessage = (message: string, maxLength: number = 80) => {
     if (message.length <= maxLength) return message;
-    return message.substring(0, maxLength) + '...';
+    return message.substring(0, maxLength) + "...";
   };
 
   // Calculate pagination
@@ -105,7 +105,8 @@ export function LogsTable({
           </TableHeader>
           <TableBody>
             {logs.map((log) => {
-              const isSelected = selectedLog?.log_timestamp === log.log_timestamp &&
+              const isSelected =
+                selectedLog?.log_timestamp === log.log_timestamp &&
                 selectedLog?.body === log.body;
               const severityColor = getSeverityColor(log.severity_text);
 
@@ -113,7 +114,7 @@ export function LogsTable({
                 <TableRow
                   key={`${log.log_timestamp}-${log.body}`}
                   className={`cursor-pointer hover:bg-muted/50 ${
-                    isSelected ? 'bg-muted' : ''
+                    isSelected ? "bg-muted" : ""
                   }`}
                   style={{
                     borderLeft: `4px solid ${severityColor}`,
@@ -145,12 +146,12 @@ export function LogsTable({
                     className="text-center"
                     onClick={(e) => {
                       // Prevent row click when clicking in this cell
-                      if (log.trace_id && log.trace_id !== '') {
+                      if (log.trace_id && log.trace_id !== "") {
                         e.stopPropagation();
                       }
                     }}
                   >
-                    {log.trace_id && log.trace_id !== '' && (
+                    {log.trace_id && log.trace_id !== "" && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -185,7 +186,9 @@ export function LogsTable({
       <div className="flex items-center justify-between border-t bg-card p-4 mt-4">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Rows per page:</span>
+            <span className="text-sm text-muted-foreground">
+              Rows per page:
+            </span>
             <Select
               value={pageSize.toString()}
               onValueChange={(value) => onPageSizeChange(Number(value))}

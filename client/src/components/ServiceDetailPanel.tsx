@@ -1,9 +1,18 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { X, ArrowRight, ArrowLeft } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { ServiceMetricsDetail, TimeRange } from '../types/observability';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { X, ArrowRight, ArrowLeft } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { ServiceMetricsDetail, TimeRange } from "../types/observability";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface DependencyInfo {
   service_name: string;
@@ -23,16 +32,29 @@ interface ServiceDetailPanelProps {
   onClose: () => void;
 }
 
-export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceDetailPanelProps) {
-  const { data: metrics, isLoading, error } = useQuery<ServiceMetricsDetail>({
-    queryKey: ['metrics', serviceName, timeRange],
+export function ServiceDetailPanel({
+  serviceName,
+  timeRange,
+  onClose,
+}: ServiceDetailPanelProps) {
+  const {
+    data: metrics,
+    isLoading,
+    error,
+  } = useQuery<ServiceMetricsDetail>({
+    queryKey: ["metrics", serviceName, timeRange],
     queryFn: async () => {
-      const response = await fetch(`/api/services/${serviceName}/metrics?time_range=${timeRange}`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/api/services/${serviceName}/metrics?time_range=${timeRange}`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to fetch metrics: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Failed to fetch metrics: ${response.status} - ${errorText}`,
+        );
       }
       return response.json();
     },
@@ -40,13 +62,16 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
   });
 
   const { data: dependencies } = useQuery<ServiceDependencies>({
-    queryKey: ['dependencies', serviceName],
+    queryKey: ["dependencies", serviceName],
     queryFn: async () => {
-      const response = await fetch(`/api/services/${serviceName}/dependencies`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/api/services/${serviceName}/dependencies`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) {
-        throw new Error('Failed to fetch dependencies');
+        throw new Error("Failed to fetch dependencies");
       }
       return response.json();
     },
@@ -55,9 +80,11 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
 
   const getChangeIndicator = (current: number, baseline: number) => {
     const change = ((current - baseline) / baseline) * 100;
-    if (Math.abs(change) < 1) return { text: '~', color: 'text-muted-foreground' };
-    if (change > 0) return { text: `+${change.toFixed(1)}%`, color: 'text-destructive' };
-    return { text: `${change.toFixed(1)}%`, color: 'text-[hsl(160,60%,45%)]' };
+    if (Math.abs(change) < 1)
+      return { text: "~", color: "text-muted-foreground" };
+    if (change > 0)
+      return { text: `+${change.toFixed(1)}%`, color: "text-destructive" };
+    return { text: `${change.toFixed(1)}%`, color: "text-[hsl(160,60%,45%)]" };
   };
 
   return (
@@ -65,7 +92,9 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
       <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">{serviceName}</h2>
-          <p className="text-sm text-muted-foreground">Service metrics and performance</p>
+          <p className="text-sm text-muted-foreground">
+            Service metrics and performance
+          </p>
         </div>
         <button
           onClick={onClose}
@@ -85,7 +114,9 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
 
         {error && (
           <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
-            <div className="text-destructive font-semibold mb-2">Failed to load metrics</div>
+            <div className="text-destructive font-semibold mb-2">
+              Failed to load metrics
+            </div>
             <div className="text-sm text-muted-foreground">{error.message}</div>
           </div>
         )}
@@ -95,72 +126,144 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">P50 Latency</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    P50 Latency
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{metrics.current.latency_p50.toFixed(2)}ms</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.latency_p50, metrics.baseline.latency_p50).color}`}>
-                    {getChangeIndicator(metrics.current.latency_p50, metrics.baseline.latency_p50).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {metrics.current.latency_p50.toFixed(2)}ms
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.latency_p50, metrics.baseline.latency_p50).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.latency_p50,
+                        metrics.baseline.latency_p50,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">P95 Latency</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    P95 Latency
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{metrics.current.latency_p95.toFixed(2)}ms</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.latency_p95, metrics.baseline.latency_p95).color}`}>
-                    {getChangeIndicator(metrics.current.latency_p95, metrics.baseline.latency_p95).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {metrics.current.latency_p95.toFixed(2)}ms
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.latency_p95, metrics.baseline.latency_p95).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.latency_p95,
+                        metrics.baseline.latency_p95,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">P99 Latency</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    P99 Latency
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{metrics.current.latency_p99.toFixed(2)}ms</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.latency_p99, metrics.baseline.latency_p99).color}`}>
-                    {getChangeIndicator(metrics.current.latency_p99, metrics.baseline.latency_p99).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {metrics.current.latency_p99.toFixed(2)}ms
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.latency_p99, metrics.baseline.latency_p99).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.latency_p99,
+                        metrics.baseline.latency_p99,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Error Rate</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Error Rate
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{(metrics.current.error_rate * 100).toFixed(2)}%</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.error_rate, metrics.baseline.error_rate).color}`}>
-                    {getChangeIndicator(metrics.current.error_rate, metrics.baseline.error_rate).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {(metrics.current.error_rate * 100).toFixed(2)}%
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.error_rate, metrics.baseline.error_rate).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.error_rate,
+                        metrics.baseline.error_rate,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Avg Duration</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Avg Duration
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{metrics.current.avg_duration_ms.toFixed(2)}ms</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.avg_duration_ms, metrics.baseline.avg_duration_ms).color}`}>
-                    {getChangeIndicator(metrics.current.avg_duration_ms, metrics.baseline.avg_duration_ms).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {metrics.current.avg_duration_ms.toFixed(2)}ms
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.avg_duration_ms, metrics.baseline.avg_duration_ms).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.avg_duration_ms,
+                        metrics.baseline.avg_duration_ms,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Requests/sec</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Requests/sec
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{metrics.current.requests_per_second.toFixed(2)}</div>
-                  <div className={`text-sm ${getChangeIndicator(metrics.current.requests_per_second, metrics.baseline.requests_per_second).color}`}>
-                    {getChangeIndicator(metrics.current.requests_per_second, metrics.baseline.requests_per_second).text} vs baseline
+                  <div className="text-2xl font-bold">
+                    {metrics.current.requests_per_second.toFixed(2)}
+                  </div>
+                  <div
+                    className={`text-sm ${getChangeIndicator(metrics.current.requests_per_second, metrics.baseline.requests_per_second).color}`}
+                  >
+                    {
+                      getChangeIndicator(
+                        metrics.current.requests_per_second,
+                        metrics.baseline.requests_per_second,
+                      ).text
+                    }{" "}
+                    vs baseline
                   </div>
                 </CardContent>
               </Card>
@@ -173,23 +276,38 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={metrics.trends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="timestamp" 
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="timestamp"
                       stroke="hsl(var(--muted-foreground))"
-                      tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      tickFormatter={(value) =>
+                        new Date(value).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }
                     />
                     <YAxis stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem'
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "0.5rem",
                       }}
-                      labelFormatter={(value) => new Date(value).toLocaleString()}
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleString()
+                      }
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="latency_p95" stroke="hsl(160 60% 45%)" name="P95 Latency (ms)" />
+                    <Line
+                      type="monotone"
+                      dataKey="latency_p95"
+                      stroke="hsl(160 60% 45%)"
+                      name="P95 Latency (ms)"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -202,23 +320,38 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={metrics.trends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="timestamp" 
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="timestamp"
                       stroke="hsl(var(--muted-foreground))"
-                      tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      tickFormatter={(value) =>
+                        new Date(value).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }
                     />
                     <YAxis stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem'
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "0.5rem",
                       }}
-                      labelFormatter={(value) => new Date(value).toLocaleString()}
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleString()
+                      }
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="avg_duration_ms" stroke="hsl(30 80% 55%)" name="Avg Duration (ms)" />
+                    <Line
+                      type="monotone"
+                      dataKey="avg_duration_ms"
+                      stroke="hsl(30 80% 55%)"
+                      name="Avg Duration (ms)"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -231,23 +364,38 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={metrics.trends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="timestamp" 
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="timestamp"
                       stroke="hsl(var(--muted-foreground))"
-                      tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      tickFormatter={(value) =>
+                        new Date(value).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }
                     />
                     <YAxis stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem'
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "0.5rem",
                       }}
-                      labelFormatter={(value) => new Date(value).toLocaleString()}
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleString()
+                      }
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="error_count" stroke="hsl(0 63% 31%)" name="Error Count" />
+                    <Line
+                      type="monotone"
+                      dataKey="error_count"
+                      stroke="hsl(0 63% 31%)"
+                      name="Error Count"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -260,97 +408,129 @@ export function ServiceDetailPanel({ serviceName, timeRange, onClose }: ServiceD
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={metrics.trends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="timestamp" 
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="timestamp"
                       stroke="hsl(var(--muted-foreground))"
-                      tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      tickFormatter={(value) =>
+                        new Date(value).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }
                     />
                     <YAxis stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))', 
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem'
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "0.5rem",
                       }}
-                      labelFormatter={(value) => new Date(value).toLocaleString()}
+                      labelFormatter={(value) =>
+                        new Date(value).toLocaleString()
+                      }
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="request_count" stroke="hsl(200 80% 50%)" name="Request Count" />
+                    <Line
+                      type="monotone"
+                      dataKey="request_count"
+                      stroke="hsl(200 80% 50%)"
+                      name="Request Count"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            {dependencies && (dependencies.inbound.length > 0 || dependencies.outbound.length > 0) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Service Dependencies</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {dependencies.inbound.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                          <ArrowLeft className="h-4 w-4" />
-                          Inbound ({dependencies.inbound.length})
-                        </h3>
-                        <div className="space-y-2">
-                          {dependencies.inbound.map((dep) => (
-                            <div
-                              key={dep.service_name}
-                              className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium text-foreground">{dep.service_name}</span>
-                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  dep.health_status === 'critical' ? 'bg-destructive text-destructive-foreground' :
-                                  dep.health_status === 'warning' ? 'bg-[hsl(30,80%,55%)] text-primary-foreground' :
-                                  'bg-[hsl(160,60%,45%)] text-primary-foreground'
-                                }`}>
-                                  {dep.health_status}
+            {dependencies &&
+              (dependencies.inbound.length > 0 ||
+                dependencies.outbound.length > 0) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Service Dependencies</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {dependencies.inbound.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                            <ArrowLeft className="h-4 w-4" />
+                            Inbound ({dependencies.inbound.length})
+                          </h3>
+                          <div className="space-y-2">
+                            {dependencies.inbound.map((dep) => (
+                              <div
+                                key={dep.service_name}
+                                className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-medium text-foreground">
+                                    {dep.service_name}
+                                  </span>
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      dep.health_status === "critical"
+                                        ? "bg-destructive text-destructive-foreground"
+                                        : dep.health_status === "warning"
+                                          ? "bg-[hsl(30,80%,55%)] text-primary-foreground"
+                                          : "bg-[hsl(160,60%,45%)] text-primary-foreground"
+                                    }`}
+                                  >
+                                    {dep.health_status}
+                                  </span>
+                                </div>
+                                <span className="text-sm text-muted-foreground">
+                                  {dep.call_count.toLocaleString()} calls
                                 </span>
                               </div>
-                              <span className="text-sm text-muted-foreground">{dep.call_count.toLocaleString()} calls</span>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {dependencies.outbound.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                          <ArrowRight className="h-4 w-4" />
-                          Outbound ({dependencies.outbound.length})
-                        </h3>
-                        <div className="space-y-2">
-                          {dependencies.outbound.map((dep) => (
-                            <div
-                              key={dep.service_name}
-                              className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium text-foreground">{dep.service_name}</span>
-                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  dep.health_status === 'critical' ? 'bg-destructive text-destructive-foreground' :
-                                  dep.health_status === 'warning' ? 'bg-[hsl(30,80%,55%)] text-primary-foreground' :
-                                  'bg-[hsl(160,60%,45%)] text-primary-foreground'
-                                }`}>
-                                  {dep.health_status}
+                      {dependencies.outbound.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                            <ArrowRight className="h-4 w-4" />
+                            Outbound ({dependencies.outbound.length})
+                          </h3>
+                          <div className="space-y-2">
+                            {dependencies.outbound.map((dep) => (
+                              <div
+                                key={dep.service_name}
+                                className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-medium text-foreground">
+                                    {dep.service_name}
+                                  </span>
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      dep.health_status === "critical"
+                                        ? "bg-destructive text-destructive-foreground"
+                                        : dep.health_status === "warning"
+                                          ? "bg-[hsl(30,80%,55%)] text-primary-foreground"
+                                          : "bg-[hsl(160,60%,45%)] text-primary-foreground"
+                                    }`}
+                                  >
+                                    {dep.health_status}
+                                  </span>
+                                </div>
+                                <span className="text-sm text-muted-foreground">
+                                  {dep.call_count.toLocaleString()} calls
                                 </span>
                               </div>
-                              <span className="text-sm text-muted-foreground">{dep.call_count.toLocaleString()} calls</span>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
           </>
         )}
       </div>

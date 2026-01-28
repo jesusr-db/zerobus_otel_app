@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { TimeRange } from '../types/logs';
+import { useQuery } from "@tanstack/react-query";
+import { TimeRange } from "../types/logs";
 import {
   AreaChart,
   Area,
@@ -9,7 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-} from 'recharts';
+} from "recharts";
 
 interface SeverityTimelinePoint {
   timestamp: string;
@@ -30,24 +30,30 @@ interface SeverityTimelineProps {
   timeRange: TimeRange;
 }
 
-export function SeverityTimeline({ serviceName, timeRange }: SeverityTimelineProps) {
+export function SeverityTimeline({
+  serviceName,
+  timeRange,
+}: SeverityTimelineProps) {
   // Fetch timeline data
   const { data, isLoading, error } = useQuery<SeverityTimelineResponse>({
-    queryKey: ['severity-timeline', serviceName, timeRange],
+    queryKey: ["severity-timeline", serviceName, timeRange],
     queryFn: async () => {
       const params = new URLSearchParams({
         time_range: timeRange,
       });
 
-      if (serviceName && serviceName !== '__ALL__') {
-        params.append('service_name', serviceName);
+      if (serviceName && serviceName !== "__ALL__") {
+        params.append("service_name", serviceName);
       }
 
-      const response = await fetch(`/api/logs/severity-timeline?${params.toString()}`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/api/logs/severity-timeline?${params.toString()}`,
+        {
+          credentials: "include",
+        },
+      );
 
-      if (!response.ok) throw new Error('Failed to fetch severity timeline');
+      if (!response.ok) throw new Error("Failed to fetch severity timeline");
       return response.json();
     },
   });
@@ -55,11 +61,11 @@ export function SeverityTimeline({ serviceName, timeRange }: SeverityTimelinePro
   // Format timestamp for display
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -92,7 +98,9 @@ export function SeverityTimeline({ serviceName, timeRange }: SeverityTimelinePro
   if (!chartData || chartData.length === 0) {
     return (
       <div className="h-64 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">No timeline data available</div>
+        <div className="text-sm text-muted-foreground">
+          No timeline data available
+        </div>
       </div>
     );
   }
@@ -106,20 +114,52 @@ export function SeverityTimeline({ serviceName, timeRange }: SeverityTimelinePro
         >
           <defs>
             <linearGradient id="colorError" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.1} />
+              <stop
+                offset="5%"
+                stopColor="hsl(0, 84%, 60%)"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(0, 84%, 60%)"
+                stopOpacity={0.1}
+              />
             </linearGradient>
             <linearGradient id="colorWarn" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(30, 80%, 55%)" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="hsl(30, 80%, 55%)" stopOpacity={0.1} />
+              <stop
+                offset="5%"
+                stopColor="hsl(30, 80%, 55%)"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(30, 80%, 55%)"
+                stopOpacity={0.1}
+              />
             </linearGradient>
             <linearGradient id="colorInfo" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(160, 60%, 45%)" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="hsl(160, 60%, 45%)" stopOpacity={0.1} />
+              <stop
+                offset="5%"
+                stopColor="hsl(160, 60%, 45%)"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(160, 60%, 45%)"
+                stopOpacity={0.1}
+              />
             </linearGradient>
             <linearGradient id="colorDebug" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.6} />
-              <stop offset="95%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.1} />
+              <stop
+                offset="5%"
+                stopColor="hsl(var(--muted-foreground))"
+                stopOpacity={0.6}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(var(--muted-foreground))"
+                stopOpacity={0.1}
+              />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -137,11 +177,11 @@ export function SeverityTimeline({ serviceName, timeRange }: SeverityTimelinePro
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
+              backgroundColor: "hsl(var(--card))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "8px",
             }}
-            labelStyle={{ color: 'hsl(var(--foreground))' }}
+            labelStyle={{ color: "hsl(var(--foreground))" }}
           />
           <Legend />
           <Area

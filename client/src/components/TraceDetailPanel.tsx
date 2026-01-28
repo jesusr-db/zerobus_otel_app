@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { useQuery } from "@tanstack/react-query";
+import { X } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 interface SpanDetail {
   service_name: string;
@@ -19,15 +19,21 @@ interface TraceDetailPanelProps {
 }
 
 export function TraceDetailPanel({ traceId, onClose }: TraceDetailPanelProps) {
-  const { data: trace, isLoading, error } = useQuery<TraceDetail>({
-    queryKey: ['trace-detail', traceId],
+  const {
+    data: trace,
+    isLoading,
+    error,
+  } = useQuery<TraceDetail>({
+    queryKey: ["trace-detail", traceId],
     queryFn: async () => {
       const response = await fetch(`/api/services/traces/${traceId}`, {
-        credentials: 'include',
+        credentials: "include",
       });
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to fetch trace: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Failed to fetch trace: ${response.status} - ${errorText}`,
+        );
       }
       return response.json();
     },
@@ -53,13 +59,17 @@ export function TraceDetailPanel({ traceId, onClose }: TraceDetailPanelProps) {
       <div className="p-6 space-y-6">
         {isLoading && (
           <div className="flex items-center justify-center py-12">
-            <div className="text-muted-foreground">Loading trace details...</div>
+            <div className="text-muted-foreground">
+              Loading trace details...
+            </div>
           </div>
         )}
 
         {error && (
           <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
-            <div className="text-destructive font-semibold mb-2">Failed to load trace</div>
+            <div className="text-destructive font-semibold mb-2">
+              Failed to load trace
+            </div>
             <div className="text-sm text-muted-foreground">{error.message}</div>
           </div>
         )}
@@ -74,10 +84,14 @@ export function TraceDetailPanel({ traceId, onClose }: TraceDetailPanelProps) {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Start Time:</span>
-                    <span className="font-medium">{new Date(trace.trace_start).toLocaleString()}</span>
+                    <span className="font-medium">
+                      {new Date(trace.trace_start).toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Services:</span>
+                    <span className="text-muted-foreground">
+                      Total Services:
+                    </span>
                     <span className="font-medium">{trace.spans.length}</span>
                   </div>
                 </div>
@@ -95,8 +109,12 @@ export function TraceDetailPanel({ traceId, onClose }: TraceDetailPanelProps) {
                       key={span.service_name}
                       className="flex items-center justify-between p-3 rounded-lg border border-border bg-card"
                     >
-                      <span className="text-sm font-medium text-foreground">{span.service_name}</span>
-                      <span className="text-sm text-muted-foreground">{span.total_duration_ms.toFixed(2)}ms</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {span.service_name}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {span.total_duration_ms.toFixed(2)}ms
+                      </span>
                     </div>
                   ))}
                 </div>

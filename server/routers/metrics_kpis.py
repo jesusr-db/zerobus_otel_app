@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Literal, Dict, List, Any
 import logging
 from server.services.lakebase_manager import LakebaseManager
-from server.config import DATA_BACKEND
+from server.config import LAKEBASE_SCHEMA_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -11,14 +11,41 @@ TimeRange = Literal["5m", "1h", "1d", "1w"]
 
 
 def get_time_range_interval(time_range: TimeRange) -> tuple[str, int]:
-    """Convert time range to SQL interval string and seconds."""
+    """
+    Convert time range to SQL interval string and seconds.
+
+    Note: PostgreSQL requires lowercase with plural forms for quantities > 1
+    """
     intervals = {
-        "5m": ("5 MINUTE", 300),
-        "1h": ("1 HOUR", 3600),
-        "1d": ("1 DAY", 86400),
-        "1w": ("7 DAY", 604800),
+        "5m": ("5 minutes", 300),
+        "1h": ("1 hour", 3600),
+        "1d": ("1 day", 86400),
+        "1w": ("7 days", 604800),
     }
     return intervals[time_range]
+
+
+def get_bucket_size(time_range: TimeRange) -> tuple[str, int]:
+    """
+    Get appropriate bucket size for aggregation based on time range.
+    Returns (interval_string, bucket_size_in_seconds).
+
+    Note: Use bucket_seconds with epoch-based bucketing for custom intervals:
+    to_timestamp(floor(extract(epoch from timestamp) / bucket_seconds) * bucket_seconds)
+
+    Bucketing strategy:
+    - 5m: 1 minute buckets (5 data points)
+    - 1h: 5 minute buckets (12 data points)
+    - 1d: 1 hour buckets (24 data points)
+    - 1w: 4 hour buckets (42 data points)
+    """
+    buckets = {
+        "5m": ("1 minute", 60),       # 5 buckets
+        "1h": ("5 minutes", 300),     # 12 buckets (use epoch bucketing)
+        "1d": ("1 hour", 3600),       # 24 buckets
+        "1w": ("4 hours", 14400),     # 42 buckets (use epoch bucketing)
+    }
+    return buckets[time_range]
 
 
 def calculate_trend(current: float, baseline: float) -> str:
@@ -47,12 +74,9 @@ async def get_service_kpis(
     and grouping them by type (histogram, gauge, sum).
     """
     user_token = request.headers.get("X-Forwarded-Access-Token")
-
-    if DATA_BACKEND != "lakebase":
-        raise HTTPException(status_code=501, detail="Metrics KPIs only supported with Lakebase backend")
-
     lakebase = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
+    bucket_interval, bucket_seconds = get_bucket_size(time_range)
 
     try:
         # Query to get unique metrics for this service grouped by type
@@ -60,7 +84,7 @@ async def get_service_kpis(
         SELECT DISTINCT
             name,
             metric_type
-        FROM zerobus_sdp.metrics_1min_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
         WHERE service_name = '{service_name}'
             AND window_start >= NOW() - INTERVAL '{interval}'
         ORDER BY metric_type, name
@@ -96,55 +120,65 @@ async def get_service_kpis(
             result["metrics_by_type"][metric_type] = {}
 
             for metric_name in metric_names:
-                # Current period query with timestamps
+                # Current period query with time-based bucketing for efficient aggregation
+                # Using epoch-based bucketing for custom intervals (PostgreSQL DATE_TRUNC only accepts single precision)
+                # Note: Schema only has avg/min/max/sum - no percentile columns available
                 current_query = f"""
-                WITH recent_data AS (
+                WITH bucketed_data AS (
                     SELECT
-                        window_start,
-                        avg_value,
-                        p50_value,
-                        p95_value,
-                        p99_value,
-                        sum_value,
-                        sample_count
-                    FROM zerobus_sdp.metrics_1min_synced
+                        to_timestamp(floor(extract(epoch from window_start) / {bucket_seconds}) * {bucket_seconds}) as bucket_time,
+                        AVG(avg_value) as bucket_avg,
+                        AVG(min_value) as bucket_min,
+                        AVG(max_value) as bucket_max,
+                        SUM(sum_value) as bucket_sum,
+                        SUM(sample_count) as bucket_samples
+                    FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
                     WHERE service_name = '{service_name}'
                         AND name = '{metric_name}'
                         AND window_start >= NOW() - INTERVAL '{interval}'
-                    ORDER BY window_start ASC
-                    LIMIT 60
+                    GROUP BY bucket_time
+                    ORDER BY bucket_time ASC
                 )
                 SELECT
-                    AVG(avg_value) as avg_avg,
-                    AVG(p50_value) as avg_p50,
-                    AVG(p95_value) as avg_p95,
-                    AVG(p99_value) as avg_p99,
-                    SUM(sum_value) as total_sum,
-                    SUM(sample_count) as total_samples,
-                    array_agg(window_start ORDER BY window_start ASC) as timestamps,
-                    array_agg(avg_value ORDER BY window_start ASC) as sparkline_avg,
-                    array_agg(p50_value ORDER BY window_start ASC) as sparkline_p50,
-                    array_agg(p95_value ORDER BY window_start ASC) as sparkline_p95,
-                    array_agg(p99_value ORDER BY window_start ASC) as sparkline_p99,
-                    array_agg(sum_value ORDER BY window_start ASC) as sparkline_sum
-                FROM recent_data
+                    AVG(bucket_avg) as avg_avg,
+                    AVG(bucket_min) as avg_min,
+                    AVG(bucket_max) as avg_max,
+                    SUM(bucket_sum) as total_sum,
+                    SUM(bucket_samples) as total_samples,
+                    array_agg(bucket_time ORDER BY bucket_time ASC) as timestamps,
+                    array_agg(bucket_avg ORDER BY bucket_time ASC) as sparkline_avg,
+                    array_agg(bucket_min ORDER BY bucket_time ASC) as sparkline_min,
+                    array_agg(bucket_max ORDER BY bucket_time ASC) as sparkline_max,
+                    array_agg(bucket_sum ORDER BY bucket_time ASC) as sparkline_sum
+                FROM bucketed_data
                 """
 
                 current_data = lakebase.execute_query(current_query)
 
                 # Baseline period query (previous period for trend calculation)
+                # Using epoch-based bucketing for custom intervals
+                # Note: Schema only has avg/min/max/sum - no percentile columns available
                 baseline_query = f"""
+                WITH bucketed_baseline AS (
+                    SELECT
+                        to_timestamp(floor(extract(epoch from window_start) / {bucket_seconds}) * {bucket_seconds}) as bucket_time,
+                        AVG(avg_value) as bucket_avg,
+                        AVG(min_value) as bucket_min,
+                        AVG(max_value) as bucket_max,
+                        SUM(sum_value) as bucket_sum
+                    FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
+                    WHERE service_name = '{service_name}'
+                        AND name = '{metric_name}'
+                        AND window_start >= NOW() - INTERVAL '{interval}' * 2
+                        AND window_start < NOW() - INTERVAL '{interval}'
+                    GROUP BY bucket_time
+                )
                 SELECT
-                    AVG(avg_value) as baseline_avg,
-                    AVG(p50_value) as baseline_p50,
-                    AVG(p95_value) as baseline_p95,
-                    AVG(p99_value) as baseline_p99,
-                    SUM(sum_value) as baseline_sum
-                FROM zerobus_sdp.metrics_1min_synced
-                WHERE service_name = '{service_name}'
-                    AND name = '{metric_name}'
-                    AND window_start >= NOW() - INTERVAL '{interval}' * 2
-                    AND window_start < NOW() - INTERVAL '{interval}'
+                    AVG(bucket_avg) as baseline_avg,
+                    AVG(bucket_min) as baseline_min,
+                    AVG(bucket_max) as baseline_max,
+                    SUM(bucket_sum) as baseline_sum
+                FROM bucketed_baseline
                 """
 
                 baseline_data = lakebase.execute_query(baseline_query)
@@ -174,32 +208,9 @@ async def get_service_kpis(
                 }
 
                 if metric_type == "histogram":
-                    # Histogram: Show percentiles with time series data
-                    metric_data["percentiles"] = {
-                        "p50": {
-                            "value": round(current['avg_p50'] or 0, 2),
-                            "trend": calculate_trend(
-                                current['avg_p50'] or 0,
-                                baseline.get('baseline_p50') or current['avg_p50'] or 0
-                            ),
-                            "timeseries": create_time_series(timestamps, current.get('sparkline_p50', []))
-                        },
-                        "p95": {
-                            "value": round(current['avg_p95'] or 0, 2),
-                            "trend": calculate_trend(
-                                current['avg_p95'] or 0,
-                                baseline.get('baseline_p95') or current['avg_p95'] or 0
-                            ),
-                            "timeseries": create_time_series(timestamps, current.get('sparkline_p95', []))
-                        },
-                        "p99": {
-                            "value": round(current['avg_p99'] or 0, 2),
-                            "trend": calculate_trend(
-                                current['avg_p99'] or 0,
-                                baseline.get('baseline_p99') or current['avg_p99'] or 0
-                            ),
-                            "timeseries": create_time_series(timestamps, current.get('sparkline_p99', []))
-                        },
+                    # Histogram: Show statistics with time series data
+                    # Note: Percentiles not available in aggregated schema - showing avg/min/max instead
+                    metric_data["statistics"] = {
                         "avg": {
                             "value": round(current['avg_avg'] or 0, 2),
                             "trend": calculate_trend(
@@ -207,6 +218,22 @@ async def get_service_kpis(
                                 baseline.get('baseline_avg') or current['avg_avg'] or 0
                             ),
                             "timeseries": create_time_series(timestamps, current.get('sparkline_avg', []))
+                        },
+                        "min": {
+                            "value": round(current['avg_min'] or 0, 2),
+                            "trend": calculate_trend(
+                                current['avg_min'] or 0,
+                                baseline.get('baseline_min') or current['avg_min'] or 0
+                            ),
+                            "timeseries": create_time_series(timestamps, current.get('sparkline_min', []))
+                        },
+                        "max": {
+                            "value": round(current['avg_max'] or 0, 2),
+                            "trend": calculate_trend(
+                                current['avg_max'] or 0,
+                                baseline.get('baseline_max') or current['avg_max'] or 0
+                            ),
+                            "timeseries": create_time_series(timestamps, current.get('sparkline_max', []))
                         }
                     }
 

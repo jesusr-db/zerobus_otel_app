@@ -2,22 +2,22 @@
  * TypeScript types for Logs API
  */
 
-export type SeverityLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export type SeverityLevel = "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL";
 
-export type TimeRange = '5m' | '1h' | '1d' | '1w';
+export type TimeRange = "5m" | "1h" | "1d" | "1w";
 
-export type SearchMode = 'simple' | 'advanced';
+export type SearchMode = "simple" | "advanced";
 
 export interface LogEntry {
   event_name: string;
   trace_id: string;
   span_id: string;
-  log_timestamp: string;        // ISO 8601 timestamp
-  observed_timestamp: string | null;   // ISO 8601 timestamp, can be null
-  severity_text: SeverityLevel | string;  // Can be any string if not one of the standard levels
+  log_timestamp: string; // ISO 8601 timestamp
+  observed_timestamp: string | null; // ISO 8601 timestamp, can be null
+  severity_text: SeverityLevel | string; // Can be any string if not one of the standard levels
   body: string;
   service_name: string;
-  attributes: Record<string, any>;  // Parsed from JSON string
+  attributes: Record<string, any>; // Parsed from JSON string
 }
 
 export interface LogsResponse {
@@ -30,7 +30,7 @@ export interface LogsResponse {
 }
 
 export interface SeverityTimelinePoint {
-  timestamp: string;  // ISO 8601 timestamp
+  timestamp: string; // ISO 8601 timestamp
   ERROR: number;
   WARN: number;
   INFO: number;
@@ -39,16 +39,16 @@ export interface SeverityTimelinePoint {
 
 export interface SeverityTimelineResponse {
   timeline: SeverityTimelinePoint[];
-  service_name: string | null;  // Null when all services selected
+  service_name: string | null; // Null when all services selected
   time_range: string;
 }
 
 export interface LogsFilters {
-  service_name?: string;  // Optional - searches all services if not specified
+  service_name?: string; // Optional - searches all services if not specified
   time_range: TimeRange;
   search?: string;
   search_mode: SearchMode;
-  severity_filter?: string;  // Comma-separated severity levels
+  severity_filter?: string; // Comma-separated severity levels
   trace_id?: string;
   page: number;
   page_size: number;

@@ -9,7 +9,7 @@ from typing import Optional
 import logging
 
 from server.services.lakebase_validator import LakebaseValidator, validate_lakebase_setup
-from server.config import OBSERVABILITY_TABLE_PREFIX
+from server.config import LAKEBASE_SCHEMA_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/lakebase-validation", tags=["validation"])
@@ -178,7 +178,7 @@ async def test_simple_query(request: Request):
             result = conn.execute(text("""
                 SELECT column_name, data_type 
                 FROM information_schema.columns 
-                WHERE table_schema = 'zerobus_sdp' 
+                WHERE table_schema = '{LAKEBASE_SCHEMA_NAME}' 
                   AND table_name = 'traces_assembled_synced'
                 ORDER BY ordinal_position
             """))
@@ -187,7 +187,7 @@ async def test_simple_query(request: Request):
             # Get sample data
             result = conn.execute(text("""
                 SELECT * 
-                FROM zerobus_sdp.traces_assembled_synced 
+                FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced 
                 LIMIT 1
             """))
             sample_row = None
@@ -236,7 +236,7 @@ async def test_services_query_native(
           SELECT 
             span_value->>'service_name' as service_name,
             (span_value->>'duration_ms')::float as duration_ms
-          FROM zerobus_sdp.traces_assembled_synced t
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
           CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
           WHERE t.trace_start >= NOW() - INTERVAL '{time_range}'
         )
@@ -276,29 +276,29 @@ async def test_services_query(
     time_range: str = Query(default="1h", description="Time range: 1h or 24h")
 ):
     """
-    Test the services list query on both backends.
-    
+    Test the services list query on Lakebase.
+
     This is a convenience endpoint that validates the main services query.
     """
     user_token = request.headers.get("X-Forwarded-Access-Token")
-    validator = LakebaseValidator(user_token=user_token)
-    
+    from server.services.lakebase_manager import LakebaseManager
+
     # Get time range interval
     intervals = {"1h": "1 hour", "24h": "24 hour"}
     interval = intervals.get(time_range, "1 hour")
     seconds = 3600 if time_range == "1h" else 86400
-    
-    # Build the services query
-    spark_query = f"""
+
+    # Build the Lakebase (PostgreSQL) query
+    lakebase_query = f"""
     WITH current_spans AS (
-      SELECT 
-        span.service_name,
-        span.duration_ms,
-        span.is_error,
+      SELECT
+        span_value->>'service_name' as service_name,
+        (span_value->>'duration_ms')::float as duration_ms,
+        (span_value->>'is_error')::boolean as is_error,
         t.trace_start
-      FROM {OBSERVABILITY_TABLE_PREFIX}.traces_assembled_silver t
-      LATERAL VIEW explode(span_details) AS span
-      WHERE t.trace_start >= NOW() - INTERVAL {interval}
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
+      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
+      WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
     ),
     current_metrics AS (
       SELECT
@@ -308,7 +308,7 @@ async def test_services_query(
       FROM current_spans
       GROUP BY service_name
     )
-    SELECT 
+    SELECT
       service_name,
       request_count,
       avg_duration
@@ -316,18 +316,18 @@ async def test_services_query(
     ORDER BY request_count DESC
     LIMIT 10
     """
-    
+
     try:
-        results = validator.compare_results(
-            spark_query=spark_query,
-            endpoint_name=f"services-list-{time_range}",
-            limit=3
-        )
-        
+        lakebase_manager = LakebaseManager(user_token=user_token)
+        results = lakebase_manager.execute_query(lakebase_query)
+
         return {
             "test": "services-list",
             "time_range": time_range,
-            "results": results
+            "success": True,
+            "row_count": len(results),
+            "results": results,
+            "query": lakebase_query
         }
     except Exception as e:
         logger.error(f"Services query test failed: {e}", exc_info=True)
@@ -384,7 +384,7 @@ async def discover_lakebase_schema(request: Request):
             logger.info(f"Current database: {current_db}")
             result["current_database"] = current_db
             
-            # Get all schemas (including checking for zerobus_sdp specifically)
+            # Get all schemas (including checking for {LAKEBASE_SCHEMA_NAME} specifically)
             schemas_result = conn.execute(text("""
                 SELECT schema_name 
                 FROM information_schema.schemata 
@@ -487,7 +487,7 @@ async def check_data_freshness(request: Request):
             COUNT(CASE WHEN trace_start >= NOW() - INTERVAL '1 hour' THEN 1 END) as traces_last_1hr,
             COUNT(CASE WHEN trace_start >= NOW() - INTERVAL '1 day' THEN 1 END) as traces_last_1day,
             COUNT(*) as total_traces
-        FROM zerobus_sdp.traces_assembled_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
         """
 
         freshness_results = lakebase.execute_query(freshness_query)
@@ -499,7 +499,7 @@ async def check_data_freshness(request: Request):
             trace_start,
             span_count,
             NOW() - trace_start as age
-        FROM zerobus_sdp.traces_assembled_synced
+        FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
         ORDER BY trace_start DESC
         LIMIT 10
         """
@@ -511,7 +511,7 @@ async def check_data_freshness(request: Request):
         WITH current_spans AS (
           SELECT
             span_value->>'service_name' as service_name
-          FROM zerobus_sdp.traces_assembled_synced t
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
           CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
           WHERE t.trace_start >= NOW() - INTERVAL '5 minutes'
         )
@@ -594,7 +594,7 @@ async def inspect_otel_tables(request: Request):
             schema_query = f"""
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
-            WHERE table_schema = 'zerobus_sdp'
+            WHERE table_schema = '{LAKEBASE_SCHEMA_NAME}'
               AND table_name = '{table_name}'
             ORDER BY ordinal_position
             """
@@ -610,7 +610,7 @@ async def inspect_otel_tables(request: Request):
             ]
 
             # Get row count
-            count_query = f"SELECT COUNT(*) as count FROM zerobus_sdp.{table_name}"
+            count_query = f"SELECT COUNT(*) as count FROM {LAKEBASE_SCHEMA_NAME}.{table_name}"
             count_result = lakebase.execute_query(count_query)
             table_info["row_count"] = count_result[0]['count'] if count_result else 0
 
@@ -624,7 +624,7 @@ async def inspect_otel_tables(request: Request):
                     try:
                         service_query = f"""
                         SELECT DISTINCT {col} as service_name
-                        FROM zerobus_sdp.{table_name}
+                        FROM {LAKEBASE_SCHEMA_NAME}.{table_name}
                         WHERE {col} IS NOT NULL
                         LIMIT 10
                         """
@@ -656,7 +656,7 @@ async def inspect_otel_tables(request: Request):
 @router.get("/list-tables")
 async def list_tables(request: Request):
     """
-    List all tables in the zerobus_sdp schema to discover available tables.
+    List all tables in the {LAKEBASE_SCHEMA_NAME} schema to discover available tables.
     """
     user_token = request.headers.get("X-Forwarded-Access-Token")
 
@@ -671,7 +671,7 @@ async def list_tables(request: Request):
             table_name,
             table_type
         FROM information_schema.tables
-        WHERE table_schema = 'zerobus_sdp'
+        WHERE table_schema = '{LAKEBASE_SCHEMA_NAME}'
         ORDER BY table_name
         """
 
@@ -682,7 +682,7 @@ async def list_tables(request: Request):
         for table in tables:
             table_name = table['table_name']
             try:
-                count_query = f"SELECT COUNT(*) as count FROM zerobus_sdp.{table_name}"
+                count_query = f"SELECT COUNT(*) as count FROM {LAKEBASE_SCHEMA_NAME}.{table_name}"
                 count_result = lakebase.execute_query(count_query)
                 row_count = count_result[0]['count'] if count_result else 0
             except Exception as e:
@@ -697,7 +697,7 @@ async def list_tables(request: Request):
 
         return {
             "success": True,
-            "schema": "zerobus_sdp",
+            "schema": "{LAKEBASE_SCHEMA_NAME}",
             "table_count": len(table_info),
             "tables": table_info
         }

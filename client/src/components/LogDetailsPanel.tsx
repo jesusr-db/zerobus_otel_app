@@ -1,9 +1,9 @@
-import { LogEntry, SeverityLevel } from '../types/logs';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { X, Copy, Check, ExternalLink } from 'lucide-react';
-import { useState } from 'react';
-import { JsonAttributesViewer } from './JsonAttributesViewer';
+import { LogEntry, SeverityLevel } from "../types/logs";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { X, Copy, Check, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { JsonAttributesViewer } from "./JsonAttributesViewer";
 
 interface LogDetailsPanelProps {
   log: LogEntry;
@@ -11,22 +11,26 @@ interface LogDetailsPanelProps {
   onViewTrace?: (traceId: string) => void;
 }
 
-export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelProps) {
+export function LogDetailsPanel({
+  log,
+  onClose,
+  onViewTrace,
+}: LogDetailsPanelProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Severity colors
   const getSeverityColor = (severity: SeverityLevel | string) => {
     switch (severity) {
-      case 'ERROR':
-        return 'hsl(0, 84%, 60%)';
-      case 'WARN':
-        return 'hsl(30, 80%, 55%)';
-      case 'INFO':
-        return 'hsl(160, 60%, 45%)';
-      case 'DEBUG':
-        return 'hsl(var(--muted-foreground))';
+      case "ERROR":
+        return "hsl(0, 84%, 60%)";
+      case "WARN":
+        return "hsl(30, 80%, 55%)";
+      case "INFO":
+        return "hsl(160, 60%, 45%)";
+      case "DEBUG":
+        return "hsl(var(--muted-foreground))";
       default:
-        return 'hsl(var(--muted-foreground))';
+        return "hsl(var(--muted-foreground))";
     }
   };
 
@@ -35,13 +39,13 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
   // Format timestamp
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+    return date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
       fractionalSecondDigits: 3,
     });
   };
@@ -72,7 +76,9 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
           <div className="space-y-2 text-sm">
             {/* Timestamp */}
             <div className="flex items-start justify-between">
-              <span className="text-muted-foreground w-32 flex-shrink-0">Timestamp:</span>
+              <span className="text-muted-foreground w-32 flex-shrink-0">
+                Timestamp:
+              </span>
               <span className="text-foreground font-mono flex-1 text-right">
                 {formatTimestamp(log.log_timestamp)}
               </span>
@@ -80,13 +86,19 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
 
             {/* Service */}
             <div className="flex items-start justify-between">
-              <span className="text-muted-foreground w-32 flex-shrink-0">Service:</span>
-              <span className="text-foreground flex-1 text-right">{log.service_name}</span>
+              <span className="text-muted-foreground w-32 flex-shrink-0">
+                Service:
+              </span>
+              <span className="text-foreground flex-1 text-right">
+                {log.service_name}
+              </span>
             </div>
 
             {/* Severity */}
             <div className="flex items-start justify-between">
-              <span className="text-muted-foreground w-32 flex-shrink-0">Severity:</span>
+              <span className="text-muted-foreground w-32 flex-shrink-0">
+                Severity:
+              </span>
               <Badge
                 variant="outline"
                 style={{
@@ -100,9 +112,11 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
             </div>
 
             {/* Trace ID */}
-            {log.trace_id && log.trace_id !== '' && (
+            {log.trace_id && log.trace_id !== "" && (
               <div className="flex items-start justify-between gap-2">
-                <span className="text-muted-foreground w-32 flex-shrink-0">Trace ID:</span>
+                <span className="text-muted-foreground w-32 flex-shrink-0">
+                  Trace ID:
+                </span>
                 <div className="flex items-center gap-2 flex-1 justify-end">
                   <span className="text-foreground font-mono text-xs truncate max-w-xs">
                     {log.trace_id}
@@ -111,9 +125,9 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2"
-                    onClick={() => handleCopy(log.trace_id, 'trace_id')}
+                    onClick={() => handleCopy(log.trace_id, "trace_id")}
                   >
-                    {copiedField === 'trace_id' ? (
+                    {copiedField === "trace_id" ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       <Copy className="h-3 w-3" />
@@ -134,9 +148,11 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
             )}
 
             {/* Span ID */}
-            {log.span_id && log.span_id !== '' && (
+            {log.span_id && log.span_id !== "" && (
               <div className="flex items-start justify-between gap-2">
-                <span className="text-muted-foreground w-32 flex-shrink-0">Span ID:</span>
+                <span className="text-muted-foreground w-32 flex-shrink-0">
+                  Span ID:
+                </span>
                 <div className="flex items-center gap-2 flex-1 justify-end">
                   <span className="text-foreground font-mono text-xs truncate max-w-xs">
                     {log.span_id}
@@ -145,9 +161,9 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2"
-                    onClick={() => handleCopy(log.span_id, 'span_id')}
+                    onClick={() => handleCopy(log.span_id, "span_id")}
                   >
-                    {copiedField === 'span_id' ? (
+                    {copiedField === "span_id" ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       <Copy className="h-3 w-3" />
@@ -158,10 +174,14 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
             )}
 
             {/* Event Name */}
-            {log.event_name && log.event_name !== '' && (
+            {log.event_name && log.event_name !== "" && (
               <div className="flex items-start justify-between">
-                <span className="text-muted-foreground w-32 flex-shrink-0">Event:</span>
-                <span className="text-foreground flex-1 text-right">{log.event_name}</span>
+                <span className="text-muted-foreground w-32 flex-shrink-0">
+                  Event:
+                </span>
+                <span className="text-foreground flex-1 text-right">
+                  {log.event_name}
+                </span>
               </div>
             )}
           </div>
@@ -174,10 +194,10 @@ export function LogDetailsPanel({ log, onClose, onViewTrace }: LogDetailsPanelPr
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleCopy(log.body, 'body')}
+              onClick={() => handleCopy(log.body, "body")}
               className="h-8"
             >
-              {copiedField === 'body' ? (
+              {copiedField === "body" ? (
                 <>
                   <Check className="h-3 w-3 mr-1" />
                   Copied

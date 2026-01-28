@@ -1,15 +1,17 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import { TimeRange } from '../types/observability';
+import { createContext, useContext, useState, ReactNode } from "react";
+import { TimeRange } from "../types/observability";
 
 interface TimeRangeContextType {
   timeRange: TimeRange;
   setTimeRange: (timeRange: TimeRange) => void;
 }
 
-const TimeRangeContext = createContext<TimeRangeContextType | undefined>(undefined);
+const TimeRangeContext = createContext<TimeRangeContextType | undefined>(
+  undefined,
+);
 
 export function TimeRangeProvider({ children }: { children: ReactNode }) {
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const [timeRange, setTimeRange] = useState<TimeRange>("1h");
 
   return (
     <TimeRangeContext.Provider value={{ timeRange, setTimeRange }}>
@@ -21,7 +23,7 @@ export function TimeRangeProvider({ children }: { children: ReactNode }) {
 export function useTimeRange() {
   const context = useContext(TimeRangeContext);
   if (context === undefined) {
-    throw new Error('useTimeRange must be used within a TimeRangeProvider');
+    throw new Error("useTimeRange must be used within a TimeRangeProvider");
   }
   return context;
 }

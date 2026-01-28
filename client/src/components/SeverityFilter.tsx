@@ -1,7 +1,7 @@
-import { SeverityLevel } from '../types/logs';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { X } from 'lucide-react';
+import { SeverityLevel } from "../types/logs";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { X } from "lucide-react";
 
 interface SeverityFilterProps {
   selectedSeverities: SeverityLevel[];
@@ -11,14 +11,14 @@ interface SeverityFilterProps {
 }
 
 const SEVERITY_COLORS: Record<SeverityLevel, string> = {
-  ERROR: 'hsl(0, 84%, 60%)',
-  WARN: 'hsl(30, 80%, 55%)',
-  INFO: 'hsl(160, 60%, 45%)',
-  DEBUG: 'hsl(var(--muted-foreground))',
-  FATAL: 'hsl(0, 100%, 40%)',
+  ERROR: "hsl(0, 84%, 60%)",
+  WARN: "hsl(30, 80%, 55%)",
+  INFO: "hsl(160, 60%, 45%)",
+  DEBUG: "hsl(var(--muted-foreground))",
+  FATAL: "hsl(0, 100%, 40%)",
 };
 
-const ALL_SEVERITIES: SeverityLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG'];
+const ALL_SEVERITIES: SeverityLevel[] = ["ERROR", "WARN", "INFO", "DEBUG"];
 
 export function SeverityFilter({
   selectedSeverities,
@@ -32,7 +32,9 @@ export function SeverityFilter({
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm font-medium text-muted-foreground">Severity:</span>
+      <span className="text-sm font-medium text-muted-foreground">
+        Severity:
+      </span>
 
       <div className="flex gap-2">
         {ALL_SEVERITIES.map((severity) => {
@@ -43,13 +45,13 @@ export function SeverityFilter({
           return (
             <Badge
               key={severity}
-              variant={isSelected ? 'default' : 'outline'}
+              variant={isSelected ? "default" : "outline"}
               className="cursor-pointer transition-all hover:scale-105"
               style={{
-                backgroundColor: isSelected ? color : 'transparent',
+                backgroundColor: isSelected ? color : "transparent",
                 borderColor: color,
-                color: isSelected ? 'white' : color,
-                borderWidth: '2px',
+                color: isSelected ? "white" : color,
+                borderWidth: "2px",
               }}
               onClick={() => onToggleSeverity(severity)}
             >

@@ -1,16 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import { useServiceContext } from '../contexts/ServiceContext';
-import { useTimeRange } from '../contexts/TimeRangeContext';
-import { ServiceKPIs } from '../types/metrics';
-import { HistogramCard, GaugeCard, SumCard } from './MetricCards';
+import { useQuery } from "@tanstack/react-query";
+import { useServiceContext } from "../contexts/ServiceContext";
+import { useTimeRange } from "../contexts/TimeRangeContext";
+import { ServiceKPIs } from "../types/metrics";
+import { HistogramCard, GaugeCard, SumCard } from "./MetricCards";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import { ServiceHealth } from '../types/observability';
+} from "./ui/select";
+import { ServiceHealth } from "../types/observability";
 
 export function MetricsKPIPanel() {
   const { selectedService, setSelectedService } = useServiceContext();
@@ -18,28 +18,35 @@ export function MetricsKPIPanel() {
 
   // Fetch available services for the dropdown
   const { data: services } = useQuery<ServiceHealth[]>({
-    queryKey: ['services', timeRange],
+    queryKey: ["services", timeRange],
     queryFn: async () => {
-      const response = await fetch(`/api/services/list?time_range=${timeRange}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch services');
+      const response = await fetch(
+        `/api/services/list?time_range=${timeRange}`,
+        {
+          credentials: "include",
+        },
+      );
+      if (!response.ok) throw new Error("Failed to fetch services");
       return response.json();
     },
   });
 
   // Fetch metrics KPIs for selected service
-  const { data: kpis, isLoading, error } = useQuery<ServiceKPIs>({
-    queryKey: ['service-kpis', selectedService, timeRange],
+  const {
+    data: kpis,
+    isLoading,
+    error,
+  } = useQuery<ServiceKPIs>({
+    queryKey: ["service-kpis", selectedService, timeRange],
     queryFn: async () => {
-      if (!selectedService) throw new Error('No service selected');
+      if (!selectedService) throw new Error("No service selected");
       const response = await fetch(
         `/api/metrics/${selectedService}/kpis?time_range=${timeRange}`,
         {
-          credentials: 'include',
-        }
+          credentials: "include",
+        },
       );
-      if (!response.ok) throw new Error('Failed to fetch KPIs');
+      if (!response.ok) throw new Error("Failed to fetch KPIs");
       return response.json();
     },
     enabled: !!selectedService,
@@ -56,7 +63,7 @@ export function MetricsKPIPanel() {
       </div>
 
       {/* Service Selector */}
-      <Select value={selectedService || ''} onValueChange={setSelectedService}>
+      <Select value={selectedService || ""} onValueChange={setSelectedService}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select a service" />
         </SelectTrigger>
@@ -108,9 +115,11 @@ export function MetricsKPIPanel() {
                   📊 Distribution Metrics
                 </h4>
                 <div className="space-y-2">
-                  {Object.values(kpis.metrics_by_type.histogram).map((metric) => (
-                    <HistogramCard key={metric.name} metric={metric} />
-                  ))}
+                  {Object.values(kpis.metrics_by_type.histogram).map(
+                    (metric) => (
+                      <HistogramCard key={metric.name} metric={metric} />
+                    ),
+                  )}
                 </div>
               </div>
             )}

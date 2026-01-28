@@ -1,10 +1,10 @@
-import { ReactNode, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { TimeRangeSelector } from './TimeRangeSelector';
-import { ServiceDetailPanel } from './ServiceDetailPanel';
-import { TraceDetailPanel } from './TraceDetailPanel';
-import { useServiceContext } from '../contexts/ServiceContext';
-import { useTimeRange } from '../contexts/TimeRangeContext';
+import { ReactNode, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { TimeRangeSelector } from "./TimeRangeSelector";
+import { ServiceDetailPanel } from "./ServiceDetailPanel";
+import { TraceDetailPanel } from "./TraceDetailPanel";
+import { useServiceContext } from "../contexts/ServiceContext";
+import { useTimeRange } from "../contexts/TimeRangeContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,19 +12,23 @@ interface LayoutProps {
   setSelectedTrace: (traceId: string | null) => void;
 }
 
-export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProps) {
+export function Layout({
+  children,
+  selectedTrace,
+  setSelectedTrace,
+}: LayoutProps) {
   const location = useLocation();
   const { selectedService, setSelectedService } = useServiceContext();
   const { timeRange, setTimeRange } = useTimeRange();
 
   const navItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/map', label: 'Dependency Map' },
-    { path: '/services', label: 'Services' },
-    { path: '/metrics', label: 'Metrics' },
-    { path: '/logs', label: 'Logs' },
-    { path: '/traces', label: 'Traces' },
-    { path: '/tracing-analysis', label: 'Tracing Analysis' },
+    { path: "/", label: "Dashboard" },
+    { path: "/map", label: "Dependency Map" },
+    { path: "/services", label: "Services" },
+    { path: "/metrics", label: "Metrics" },
+    { path: "/logs", label: "Logs" },
+    { path: "/traces", label: "Traces" },
+    { path: "/tracing-analysis", label: "Tracing Analysis" },
   ];
 
   return (
@@ -34,7 +38,7 @@ export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProp
           <div className="flex h-16 items-center border-b border-border px-6">
             <h1 className="text-xl font-bold text-foreground">Observability</h1>
           </div>
-          
+
           <nav className="space-y-1 p-4">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -44,8 +48,8 @@ export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProp
                   to={item.path}
                   className={`block rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                 >
                   {item.label}
@@ -68,9 +72,7 @@ export function Layout({ children, selectedTrace, setSelectedTrace }: LayoutProp
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto p-6">
-            {children}
-          </main>
+          <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
 
         {selectedService && (

@@ -5,25 +5,24 @@ export interface TimeSeriesPoint {
 
 export interface MetricValue {
   value: number;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   timeseries?: TimeSeriesPoint[];
   unit?: string;
 }
 
 export interface HistogramMetric {
   name: string;
-  type: 'histogram';
-  percentiles: {
-    p50: MetricValue;
-    p95: MetricValue;
-    p99: MetricValue;
+  type: "histogram";
+  statistics: {
     avg: MetricValue;
+    min: MetricValue;
+    max: MetricValue;
   };
 }
 
 export interface GaugeMetric {
   name: string;
-  type: 'gauge';
+  type: "gauge";
   gauge: {
     current: MetricValue;
   };
@@ -31,7 +30,7 @@ export interface GaugeMetric {
 
 export interface SumMetric {
   name: string;
-  type: 'sum';
+  type: "sum";
   sum: {
     total: MetricValue;
     rate: MetricValue;

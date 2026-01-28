@@ -1,22 +1,25 @@
-import { useQuery } from '@tanstack/react-query';
-import { ServiceGraph } from '../components/ServiceGraph';
-import { useServiceContext } from '../contexts/ServiceContext';
-import { useTimeRange } from '../contexts/TimeRangeContext';
-import { DependencyGraph } from '../types/observability';
-import { apiClient } from '../fastapi_client';
+import { useQuery } from "@tanstack/react-query";
+import { ServiceGraph } from "../components/ServiceGraph";
+import { useServiceContext } from "../contexts/ServiceContext";
+import { useTimeRange } from "../contexts/TimeRangeContext";
+import { DependencyGraph } from "../types/observability";
+import { apiClient } from "../fastapi_client";
 
 export function DependencyMapView() {
   const { timeRange } = useTimeRange();
   const { setSelectedService } = useServiceContext();
 
   const { data, isLoading, error } = useQuery<DependencyGraph>({
-    queryKey: ['dependencies', timeRange],
+    queryKey: ["dependencies", timeRange],
     queryFn: async () => {
-      const response = await fetch(`/api/dependencies/graph?time_range=${timeRange}`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/api/dependencies/graph?time_range=${timeRange}`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) {
-        throw new Error('Failed to fetch dependency graph');
+        throw new Error("Failed to fetch dependency graph");
       }
       return response.json();
     },
@@ -29,7 +32,9 @@ export function DependencyMapView() {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-4">
-        <h2 className="text-2xl font-bold text-foreground">Service Dependency Map</h2>
+        <h2 className="text-2xl font-bold text-foreground">
+          Service Dependency Map
+        </h2>
         <p className="text-sm text-muted-foreground">
           Visualize service relationships and health status
         </p>
@@ -37,22 +42,29 @@ export function DependencyMapView() {
 
       {isLoading && (
         <div className="flex h-full items-center justify-center">
-          <div className="text-muted-foreground">Loading dependency graph...</div>
+          <div className="text-muted-foreground">
+            Loading dependency graph...
+          </div>
         </div>
       )}
 
       {error && (
         <div className="flex h-full items-center justify-center">
-          <div className="text-destructive">Failed to load dependency graph</div>
+          <div className="text-destructive">
+            Failed to load dependency graph
+          </div>
         </div>
       )}
 
       {data && data.nodes.length === 0 && !isLoading && (
         <div className="flex h-full items-center justify-center">
           <div className="max-w-2xl rounded-lg border border-border bg-card p-6 text-center">
-            <div className="text-foreground font-semibold mb-2">No recent data</div>
+            <div className="text-foreground font-semibold mb-2">
+              No recent data
+            </div>
             <div className="text-sm text-muted-foreground">
-              No service activity found in the selected time range. Try selecting a longer time range.
+              No service activity found in the selected time range. Try
+              selecting a longer time range.
             </div>
           </div>
         </div>

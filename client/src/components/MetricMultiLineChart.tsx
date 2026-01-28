@@ -1,4 +1,13 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface DataSeries {
   name: string;
@@ -11,7 +20,10 @@ interface MetricMultiLineChartProps {
   height?: number;
 }
 
-export function MetricMultiLineChart({ series, height = 250 }: MetricMultiLineChartProps) {
+export function MetricMultiLineChart({
+  series,
+  height = 250,
+}: MetricMultiLineChartProps) {
   if (!series || series.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 bg-muted/20 rounded">
@@ -33,14 +45,17 @@ export function MetricMultiLineChart({ series, height = 250 }: MetricMultiLineCh
     });
   });
 
-  const chartData = Object.values(mergedData).sort((a, b) =>
-    new Date(a.time).getTime() - new Date(b.time).getTime()
+  const chartData = Object.values(mergedData).sort(
+    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
   );
 
   // Format timestamp for display
   const formatTime = (time: string) => {
     const date = new Date(time);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   // Custom tooltip
@@ -51,16 +66,20 @@ export function MetricMultiLineChart({ series, height = 250 }: MetricMultiLineCh
       return (
         <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
           <p className="text-xs text-muted-foreground mb-2">
-            {fullDate.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
+            {fullDate.toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
             })}
           </p>
           {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-sm font-semibold" style={{ color: entry.color }}>
-              {entry.name}: {entry.value?.toFixed(2) || 'N/A'}
+            <p
+              key={index}
+              className="text-sm font-semibold"
+              style={{ color: entry.color }}
+            >
+              {entry.name}: {entry.value?.toFixed(2) || "N/A"}
             </p>
           ))}
         </div>
@@ -71,8 +90,15 @@ export function MetricMultiLineChart({ series, height = 250 }: MetricMultiLineCh
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+      <LineChart
+        data={chartData}
+        margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+      >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="hsl(var(--border))"
+          opacity={0.3}
+        />
         <XAxis
           dataKey="time"
           tickFormatter={formatTime}
@@ -87,10 +113,7 @@ export function MetricMultiLineChart({ series, height = 250 }: MetricMultiLineCh
           axisLine={false}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend
-          wrapperStyle={{ fontSize: '12px' }}
-          iconType="line"
-        />
+        <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
         {series.map((s) => (
           <Line
             key={s.name}

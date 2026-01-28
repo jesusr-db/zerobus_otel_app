@@ -4,6 +4,10 @@
 
 This is a modern full-stack application template for Databricks Apps, featuring FastAPI backend with React TypeScript frontend and modern development tooling.
 
+## databricks SQL usage
+
+VERY IMPORTANT -- when using databricks dbsql MCP and executing query -- ALWAYS add `LIMIT 1` on end of query. the main intent is to review schema on tables - not review data in tables.
+ 
 ## Tech Stack
 
 **Backend:**

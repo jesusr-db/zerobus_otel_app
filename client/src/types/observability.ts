@@ -12,7 +12,7 @@ export interface MetricsSnapshot {
 
 export interface ServiceHealth {
   service_name: string;
-  health_status: 'healthy' | 'warning' | 'critical';
+  health_status: "healthy" | "warning" | "critical";
   current_latency_p50: number;
   current_latency_p95: number;
   current_latency_p99: number;
@@ -53,7 +53,7 @@ export interface ServiceDependencies {
 
 export interface GraphNode {
   id: string;
-  health: 'healthy' | 'warning' | 'critical';
+  health: "healthy" | "warning" | "critical";
   errorRate: number;
   requestCount: number;
 }
@@ -75,4 +75,4 @@ export interface WarehouseInfo {
   status: string;
 }
 
-export type TimeRange = '5m' | '1h' | '1d' | '1w';
+export type TimeRange = "5m" | "1h" | "1d" | "1w";

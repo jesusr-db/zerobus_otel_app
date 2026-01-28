@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from "react";
 
 interface ServiceContextType {
   selectedService: string | null;
@@ -20,7 +20,7 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
 export function useServiceContext() {
   const context = useContext(ServiceContext);
   if (context === undefined) {
-    throw new Error('useServiceContext must be used within a ServiceProvider');
+    throw new Error("useServiceContext must be used within a ServiceProvider");
   }
   return context;
 }
