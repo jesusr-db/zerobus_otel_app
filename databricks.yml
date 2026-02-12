@@ -31,7 +31,7 @@ targets:
     default: true
     variables: 
       database_instance_name: "zerobus-dev"
-      database_host_name: "instance-e8b4f3ba-b2fa-41d2-a271-7b11f29ca653.database.cloud.databricks.com"
+      database_host_name: "instance-b84928e9-0966-4791-a9a7-bd0006b3c781.database.cloud.databricks.com"
       warehouse_id: "5067b513037fbf07"
 
 

@@ -172,7 +172,7 @@ async def get_service_dependencies(
     lakebase_manager = LakebaseManager(user_token=user_token)
     interval, _ = get_time_range_interval(time_range)
 
-    # Filter dependencies by last_seen within time range
+    # Filter dependencies by last_active within time range
     query = f"""
     SELECT
       'inbound' as direction,
@@ -181,7 +181,7 @@ async def get_service_dependencies(
       'healthy' as health_status
     FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
     WHERE target_service = '{service_name}'
-      AND last_seen >= NOW() - INTERVAL '{interval}'
+      AND last_active >= NOW() - INTERVAL '{interval}'
     UNION ALL
     SELECT
       'outbound' as direction,
@@ -190,7 +190,7 @@ async def get_service_dependencies(
       'healthy' as health_status
     FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
     WHERE source_service = '{service_name}'
-      AND last_seen >= NOW() - INTERVAL '{interval}'
+      AND last_active >= NOW() - INTERVAL '{interval}'
     ORDER BY direction, call_count DESC
     """
 
