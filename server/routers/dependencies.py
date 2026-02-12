@@ -91,11 +91,13 @@ async def get_dependency_graph(
     """
     
     try:
+        logger.info(f"Executing dependency graph query with interval={interval}")
         results = data_manager.execute_query(query)
-        
+        logger.info(f"Query returned {len(results)} rows")
+
         nodes = []
         edges = []
-        
+
         for row in results:
             if row.get('row_type') == 'node':
                 nodes.append(GraphNode(
@@ -111,6 +113,8 @@ async def get_dependency_graph(
                     callCount=int(row['callCount'])
                 ))
         
+        logger.info(f"Returning {len(nodes)} nodes, {len(edges)} edges")
         return DependencyGraph(nodes=nodes, edges=edges)
     except Exception as e:
+        logger.error(f"Dependency graph query failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")

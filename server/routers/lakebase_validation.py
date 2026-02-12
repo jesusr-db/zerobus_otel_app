@@ -707,6 +707,140 @@ async def list_tables(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/test-dependency-filter")
+async def test_dependency_filter(request: Request, time_range: str = "1d"):
+    """
+    Test the exact dependency filtering query.
+    """
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+
+    intervals = {
+        "5m": "5 minutes",
+        "1h": "1 hour",
+        "1d": "1 day",
+        "1w": "7 days",
+    }
+    interval = intervals.get(time_range, "1 day")
+
+    try:
+        from server.services.lakebase_manager import LakebaseManager
+
+        lakebase = LakebaseManager(user_token=user_token)
+
+        # Test the exact filter query
+        test_query = f"""
+        SELECT
+            source_service,
+            target_service,
+            call_count,
+            last_active,
+            NOW() as current_time,
+            NOW() - INTERVAL '{interval}' as filter_cutoff,
+            last_active >= NOW() - INTERVAL '{interval}' as passes_filter
+        FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+        ORDER BY last_active DESC
+        LIMIT 10
+        """
+        results = lakebase.execute_query(test_query)
+
+        return {
+            "time_range": time_range,
+            "interval": interval,
+            "query": test_query,
+            "results": [
+                {k: str(v) if v is not None else None for k, v in row.items()}
+                for row in results
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Dependency filter test failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/inspect-dependencies")
+async def inspect_dependencies(request: Request):
+    """
+    Inspect service_dependencies_synced table schema and sample data.
+    """
+    user_token = request.headers.get("X-Forwarded-Access-Token")
+
+    try:
+        from server.services.lakebase_manager import LakebaseManager
+
+        lakebase = LakebaseManager(user_token=user_token)
+
+        # Get column schema
+        schema_query = f"""
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = '{LAKEBASE_SCHEMA_NAME}'
+          AND table_name = 'service_dependencies_synced'
+        ORDER BY ordinal_position
+        """
+        columns = lakebase.execute_query(schema_query)
+
+        # Get row count
+        count_query = f"SELECT COUNT(*) as count FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced"
+        count_result = lakebase.execute_query(count_query)
+        row_count = count_result[0]['count'] if count_result else 0
+
+        # Get sample data
+        sample_query = f"""
+        SELECT *
+        FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+        ORDER BY call_count DESC
+        LIMIT 10
+        """
+        sample_data = lakebase.execute_query(sample_query)
+
+        # Check last_active values
+        last_active_query = f"""
+        SELECT
+            MIN(last_active) as oldest_last_active,
+            MAX(last_active) as newest_last_active,
+            NOW() as current_time,
+            NOW() AT TIME ZONE 'UTC' as current_time_utc,
+            COUNT(*) as total_rows,
+            COUNT(CASE WHEN last_active >= NOW() - INTERVAL '5 minutes' THEN 1 END) as rows_in_5m,
+            COUNT(CASE WHEN last_active >= NOW() - INTERVAL '1 hour' THEN 1 END) as rows_in_1h,
+            COUNT(CASE WHEN last_active >= NOW() - INTERVAL '1 day' THEN 1 END) as rows_in_1d,
+            COUNT(CASE WHEN last_active >= NOW() - INTERVAL '7 days' THEN 1 END) as rows_in_1w,
+            MAX(last_active) - NOW() as time_diff_newest
+        FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+        """
+        last_active_stats = lakebase.execute_query(last_active_query)
+
+        return {
+            "success": True,
+            "table": "service_dependencies_synced",
+            "columns": [
+                {"name": col['column_name'], "type": col['data_type'], "nullable": col['is_nullable'] == 'YES'}
+                for col in columns
+            ],
+            "row_count": row_count,
+            "sample_data": [
+                {k: str(v) if v is not None else None for k, v in row.items()}
+                for row in sample_data
+            ],
+            "last_active_stats": {
+                "oldest": str(last_active_stats[0]['oldest_last_active']) if last_active_stats else None,
+                "newest": str(last_active_stats[0]['newest_last_active']) if last_active_stats else None,
+                "current_time": str(last_active_stats[0]['current_time']) if last_active_stats else None,
+                "current_time_utc": str(last_active_stats[0]['current_time_utc']) if last_active_stats else None,
+                "time_diff_newest": str(last_active_stats[0]['time_diff_newest']) if last_active_stats else None,
+                "rows_in_5m": last_active_stats[0]['rows_in_5m'] if last_active_stats else 0,
+                "rows_in_1h": last_active_stats[0]['rows_in_1h'] if last_active_stats else 0,
+                "rows_in_1d": last_active_stats[0]['rows_in_1d'] if last_active_stats else 0,
+                "rows_in_1w": last_active_stats[0]['rows_in_1w'] if last_active_stats else 0,
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Dependencies inspection failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def validation_health():
     """Health check for validation endpoints."""
@@ -719,6 +853,7 @@ async def validation_health():
             "/lakebase-validation/test-services-query",
             "/lakebase-validation/discover-schema",
             "/lakebase-validation/data-freshness",
-            "/lakebase-validation/inspect-otel-tables"
+            "/lakebase-validation/inspect-otel-tables",
+            "/lakebase-validation/inspect-dependencies"
         ]
     }
