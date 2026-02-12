@@ -130,6 +130,10 @@ job_user_name = current_user.user_name
 
 print(f"  Connecting as: {job_user_name}")
 
+# The app's service principal name (not client ID) is used as role in Lakebase
+print(f"  App SP Name: {sp_name}")
+print(f"  App SP Client ID: {sp_client_id}")
+
 # Connect to Lakebase using:
 # - user: job's service principal (current user)
 # - password: generated credential token
@@ -144,25 +148,35 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
-# First, create the role if it doesn't exist
-print(f"\nCreating role for service principal: {sp_client_id}")
-try:
-    cur.execute(f'CREATE ROLE "{sp_client_id}" WITH LOGIN')
-    conn.commit()
-    print("  ✓ Role created")
-except Exception as e:
-    if "already exists" in str(e):
-        print("  ✓ Role already exists")
-    else:
-        print(f"  ⚠ Warning: {e}")
-    conn.rollback()
+# List existing roles to find the correct one for the app SP
+print("\nListing database roles...")
+cur.execute("SELECT rolname FROM pg_roles ORDER BY rolname")
+roles = [row[0] for row in cur.fetchall()]
+print(f"  Found {len(roles)} roles")
+
+# Find matching role for our SP (could be client_id, sp_name, or prefixed)
+matching_roles = [r for r in roles if sp_client_id in r or (sp_name and sp_name.replace(' ', '') in r.replace(' ', ''))]
+print(f"  Matching roles for SP: {matching_roles}")
+
+# Determine which role identifier to use
+if sp_client_id in roles:
+    role_id = sp_client_id
+    print(f"  Using client ID as role: {role_id}")
+elif matching_roles:
+    role_id = matching_roles[0]
+    print(f"  Using matching role: {role_id}")
+else:
+    # Print all roles for debugging
+    print(f"  WARNING: No matching role found for SP")
+    print(f"  Available roles: {roles[:20]}...")  # Show first 20
+    role_id = sp_client_id  # Fall back to client ID
 
 # Define grants
 grants = [
-    f'GRANT CONNECT ON DATABASE {lakebase_database} TO "{sp_client_id}"',
-    f'GRANT USAGE ON SCHEMA {lakebase_schema} TO "{sp_client_id}"',
-    f'GRANT SELECT ON ALL TABLES IN SCHEMA {lakebase_schema} TO "{sp_client_id}"',
-    f'ALTER DEFAULT PRIVILEGES IN SCHEMA {lakebase_schema} GRANT SELECT ON TABLES TO "{sp_client_id}"',
+    f'GRANT CONNECT ON DATABASE {lakebase_database} TO "{role_id}"',
+    f'GRANT USAGE ON SCHEMA {lakebase_schema} TO "{role_id}"',
+    f'GRANT SELECT ON ALL TABLES IN SCHEMA {lakebase_schema} TO "{role_id}"',
+    f'ALTER DEFAULT PRIVILEGES IN SCHEMA {lakebase_schema} GRANT SELECT ON TABLES TO "{role_id}"',
 ]
 
 print(f"\nGranting permissions to service principal: {sp_client_id}")
