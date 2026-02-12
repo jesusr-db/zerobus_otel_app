@@ -59,5 +59,12 @@ claude_scripts/
 # client/build/  # COMMENTED OUT - We need to deploy the frontend build
 requirements.txt
 
-# Databricks Apps config (using bundle instead)
-app.yaml
+# app.yaml is now deployed with the bundle
+
+# Lock files
+uv.lock
+bun.lock
+client/bun.lock
+
+# Playwright artifacts
+.playwright-mcp/

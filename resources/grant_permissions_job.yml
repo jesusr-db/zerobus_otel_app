@@ -21,9 +21,9 @@ resources:
         - name: LAKEBASE_PORT
           default: "5432"
         - name: LAKEBASE_DATABASE_NAME
-          default: ${var.schema_name}
+          default: ${var.dest_schema_name}
         - name: LAKEBASE_SCHEMA_NAME
-          default: ${var.schema_name}
+          default: ${var.dest_schema_name}
       
       max_concurrent_runs: 1
       

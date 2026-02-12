@@ -5,36 +5,31 @@ resources:
       description: Observability dashboard for distributed tracing and service metrics (Lakebase backend)
       source_code_path: ${workspace.file_path}
       config:
-        # command: ["uvicorn","server.app:app"]
         command: ["opentelemetry-instrument", "uvicorn", "server.app:app"]
         env:
           - name: LAKEBASE_INSTANCE_NAME
             value: ${var.database_instance_name}
           - name: LAKEBASE_DATABASE_NAME
-            value: ${var.schema_name}
+            value: ${var.dest_schema_name}
           - name: LAKEBASE_CATALOG_NAME
-            value: ${var.schema_name}
+            value: ${var.dest_schema_name}
           - name: LAKEBASE_SCHEMA_NAME
-            value: ${var.schema_name}
+            value: ${var.dest_schema_name}
           - name: LAKEBASE_HOST
             value: ${var.database_host_name}
           - name: LAKEBASE_PORT
             value: "5432"
           - name: ENVIRONMENT
-            value: production      
+            value: production
       resources:
         - name: sql-warehouse
           sql_warehouse:
             id: ${var.warehouse_id}
             permission: CAN_USE
-        # - name: lakebase-instance
-        #   database_instance:
-        #     instance_name: ${var.database_instance_name}
-        #     permission: CAN_USE
         - name: database
-          description: "Databricks serving endpoint name for app"
+          description: "Lakebase database for observability data"
           database:
-            database_name: ${var.schema_name}
+            database_name: ${var.dest_schema_name}
             instance_name: ${var.database_instance_name}
             permission: CAN_CONNECT_AND_CREATE
 

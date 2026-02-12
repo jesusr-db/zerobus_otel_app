@@ -1,0 +1,20 @@
+command:
+  - opentelemetry-instrument
+  - uvicorn
+  - server.app:app
+
+env:
+  - name: LAKEBASE_INSTANCE_NAME
+    value: zerobus-dev
+  - name: LAKEBASE_DATABASE_NAME
+    value: zerobus_sdp
+  - name: LAKEBASE_CATALOG_NAME
+    value: zerobus_sdp
+  - name: LAKEBASE_SCHEMA_NAME
+    value: zerobus_sdp
+  - name: LAKEBASE_HOST
+    valueFrom: database-zerobus-dev
+  - name: LAKEBASE_PORT
+    value: "5432"
+  - name: ENVIRONMENT
+    value: production

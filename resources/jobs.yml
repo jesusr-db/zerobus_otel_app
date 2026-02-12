@@ -1,0 +1,69 @@
+# Databricks Jobs for Observability Pipeline
+# Synced tables are now managed declaratively in lakebase.yml
+# These jobs only manage DLT pipeline execution
+
+resources:
+  jobs:
+    # =======================================================================
+    # FULL PIPELINE REFRESH (On-demand)
+    # Runs silver and gold pipelines in sequence
+    # =======================================================================
+    full_pipeline_refresh:
+      name: "[${bundle.target}] Full Pipeline Refresh"
+
+      tasks:
+        - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
+            full_refresh: false
+
+        - task_key: run_gold_pipeline
+          depends_on:
+            - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
+            full_refresh: false
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+
+      tags:
+        environment: ${bundle.target}
+        layer: orchestration
+        team: data-engineering
+        usecase: otel
+
+    # =======================================================================
+    # SCHEDULED PIPELINE (Hourly)
+    # Runs silver -> gold pipeline every hour
+    # Synced tables auto-sync via CONTINUOUS/SNAPSHOT policies
+    # =======================================================================
+    scheduled_pipeline:
+      name: "[${bundle.target}] Scheduled Pipeline"
+
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"  # Every hour
+        timezone_id: "UTC"
+        pause_status: PAUSED  # Enable when ready
+
+      tasks:
+        - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
+            full_refresh: false
+
+        - task_key: run_gold_pipeline
+          depends_on:
+            - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
+            full_refresh: false
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+
+      tags:
+        environment: ${bundle.target}
+        layer: orchestration
+        team: data-engineering
+        usecase: otel

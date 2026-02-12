@@ -1,0 +1,69 @@
+# Lakebase Resources
+# Defines the database instance and synced tables declaratively
+
+resources:
+  database_instances:
+    otel_lakebase:
+      name: ${var.database_instance_name}
+      capacity: "CU_1"
+      stopped: false
+
+  synced_database_tables:
+    # Metrics rollup - synced continuously
+    metrics_1min_synced:
+      name: ${var.catalog_name}.${var.dest_schema_name}.metrics_1min_synced
+      database_instance_name: ${resources.database_instances.otel_lakebase.name}
+      logical_database_name: ${var.dest_schema_name}
+      spec:
+        source_table_full_name: ${var.catalog_name}.${var.dest_schema_name}.metrics_1min_rollup
+        primary_key_columns:
+          - name
+          - service_name
+          - window_start
+        scheduling_policy: CONTINUOUS
+
+    # Traces silver - synced continuously
+    traces_silver_synced:
+      name: ${var.catalog_name}.${var.dest_schema_name}.traces_silver_synced
+      database_instance_name: ${resources.database_instances.otel_lakebase.name}
+      logical_database_name: ${var.dest_schema_name}
+      spec:
+        source_table_full_name: ${var.catalog_name}.${var.dest_schema_name}.traces_silver
+        primary_key_columns:
+          - trace_id
+          - span_id
+        scheduling_policy: CONTINUOUS
+
+    # Logs silver - synced continuously
+    logs_synced:
+      name: ${var.catalog_name}.${var.dest_schema_name}.logs_synced
+      database_instance_name: ${resources.database_instances.otel_lakebase.name}
+      logical_database_name: ${var.dest_schema_name}
+      spec:
+        source_table_full_name: ${var.catalog_name}.${var.dest_schema_name}.logs_silver
+        primary_key_columns:
+          - log_key
+        scheduling_policy: CONTINUOUS
+
+    # Traces assembled - snapshot mode (materialized view)
+    traces_assembled_synced:
+      name: ${var.catalog_name}.${var.dest_schema_name}.traces_assembled_synced
+      database_instance_name: ${resources.database_instances.otel_lakebase.name}
+      logical_database_name: ${var.dest_schema_name}
+      spec:
+        source_table_full_name: ${var.catalog_name}.${var.dest_schema_name}.traces_assembled
+        primary_key_columns:
+          - trace_id
+        scheduling_policy: SNAPSHOT
+
+    # Service dependencies - snapshot mode (materialized view)
+    service_dependencies_synced:
+      name: ${var.catalog_name}.${var.dest_schema_name}.service_dependencies_synced
+      database_instance_name: ${resources.database_instances.otel_lakebase.name}
+      logical_database_name: ${var.dest_schema_name}
+      spec:
+        source_table_full_name: ${var.catalog_name}.${var.dest_schema_name}.service_dependencies
+        primary_key_columns:
+          - source_service
+          - target_service
+        scheduling_policy: SNAPSHOT

@@ -7,23 +7,54 @@ include:
 sync:
   include:
     - notebooks/*
-
+    - src/notebooks/**
+    - scripts/*
 
 variables:
+  # SQL Warehouse
   warehouse_id:
     description: SQL Warehouse ID for the app
-    # default: "8baced1ff014912d"
     default: "5067b513037fbf07"
+
+  # Unity Catalog - Target
   catalog_name:
     description: Catalog name for observability tables
     default: "jmr_demo"
-  schema_name:
-    description: Schema name for observability tables
+  dest_schema_name:
+    description: Schema name for observability tables (silver/gold output)
     default: "zerobus_sdp"
-  database_instance_name: 
-    default: "zerobus-otel" 
-  database_host_name: 
+
+  # Lakebase Configuration
+  database_instance_name:
+    description: Lakebase instance name for synced tables
+    default: "zerobus-otel"
+  database_host_name:
+    description: Lakebase host name
     default: "instance-80fb787b-dfab-43fc-a291-81aee89749b0.database.staging.cloud.databricks.com"
+
+  # Bronze Layer Source
+  bronze_catalog:
+    description: Bronze layer catalog (source OTEL data)
+    default: jmr_demo
+  bronze_schema:
+    description: Bronze layer schema
+    default: zerobus
+  bronze_table_prefix:
+    description: Bronze table prefix
+    default: otel
+
+  # Alerting (optional)
+  alert_webhook_url:
+    description: Webhook URL for anomaly alerts (optional)
+    default: ""
+  alert_email:
+    description: Email for job notifications (optional)
+    default: ""
+
+  # Checkpointing
+  checkpoint_location:
+    description: Volume path for streaming checkpoints
+    default: "/Volumes/jmr_demo/zerobus/checkpoints/service_health"
 
 targets:
   dev:
@@ -43,7 +74,7 @@ targets:
 
     variables:
       catalog_name: main
-      schema_name: dev_jesus_rodriguez_jmr_demo
+      dest_schema_name: dev_jesus_rodriguez_jmr_demo
       warehouse_id: "dd43ee29fedd958d"
       database_instance_name: "zerobus-otel"
       database_host_name: "instance-80fb787b-dfab-43fc-a291-81aee89749b0.database.staging.cloud.databricks.com"
