@@ -62,10 +62,10 @@ export function ServiceDetailPanel({
   });
 
   const { data: dependencies } = useQuery<ServiceDependencies>({
-    queryKey: ["dependencies", serviceName],
+    queryKey: ["dependencies", serviceName, timeRange],
     queryFn: async () => {
       const response = await fetch(
-        `/api/services/${serviceName}/dependencies`,
+        `/api/services/${serviceName}/dependencies?time_range=${timeRange}`,
         {
           credentials: "include",
         },
