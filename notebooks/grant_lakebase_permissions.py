@@ -144,6 +144,19 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
+# First, create the role if it doesn't exist
+print(f"\nCreating role for service principal: {sp_client_id}")
+try:
+    cur.execute(f'CREATE ROLE "{sp_client_id}" WITH LOGIN')
+    conn.commit()
+    print("  ✓ Role created")
+except Exception as e:
+    if "already exists" in str(e):
+        print("  ✓ Role already exists")
+    else:
+        print(f"  ⚠ Warning: {e}")
+    conn.rollback()
+
 # Define grants
 grants = [
     f'GRANT CONNECT ON DATABASE {lakebase_database} TO "{sp_client_id}"',
