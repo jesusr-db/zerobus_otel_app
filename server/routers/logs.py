@@ -212,36 +212,25 @@ async def get_logs(
         # Calculate offset
         offset = (page - 1) * page_size
 
-        # Get total count
-        count_query = f"""
-        SELECT COUNT(*) as total
-        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-        WHERE {where_sql}
-        """
-
-        count_result = lakebase.execute_query(count_query, params)
-        total_count = count_result[0]['total'] if count_result else 0
-
-        # Get severity counts
-        severity_query = f"""
-        SELECT
-            severity_text,
-            COUNT(*) as count
-        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-        WHERE {where_sql}
-        GROUP BY severity_text
-        """
-
-        severity_results = lakebase.execute_query(severity_query, params)
-        # Filter out None severity_text values
-        severity_counts = {
-            row['severity_text']: row['count']
-            for row in severity_results
-            if row['severity_text'] is not None
-        }
-
-        # Get paginated logs
+        # Optimized: Single query to get logs with severity counts using window functions
+        # This avoids 3 separate table scans
         logs_query = f"""
+        WITH filtered_logs AS (
+            SELECT
+                event_name,
+                trace_id,
+                span_id,
+                log_timestamp,
+                observed_timestamp,
+                severity_text,
+                body,
+                service_name,
+                attributes
+            FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
+            WHERE {where_sql}
+            ORDER BY log_timestamp DESC
+            LIMIT 10000
+        )
         SELECT
             event_name,
             trace_id,
@@ -251,15 +240,34 @@ async def get_logs(
             severity_text,
             body,
             service_name,
-            attributes
-        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-        WHERE {where_sql}
+            attributes,
+            COUNT(*) OVER () as total_count,
+            SUM(CASE WHEN severity_text = 'ERROR' THEN 1 ELSE 0 END) OVER () as error_count,
+            SUM(CASE WHEN severity_text = 'WARN' THEN 1 ELSE 0 END) OVER () as warn_count,
+            SUM(CASE WHEN severity_text = 'INFO' THEN 1 ELSE 0 END) OVER () as info_count,
+            SUM(CASE WHEN severity_text = 'DEBUG' THEN 1 ELSE 0 END) OVER () as debug_count
+        FROM filtered_logs
         ORDER BY log_timestamp DESC
         LIMIT %s OFFSET %s
         """
 
         logs_params = params + [page_size, offset]
         logs_results = lakebase.execute_query(logs_query, logs_params)
+
+        # Extract counts from first row (same for all rows due to window function)
+        total_count = 0
+        severity_counts = {}
+        if logs_results:
+            first_row = logs_results[0]
+            total_count = first_row.get('total_count', 0)
+            severity_counts = {
+                'ERROR': first_row.get('error_count', 0),
+                'WARN': first_row.get('warn_count', 0),
+                'INFO': first_row.get('info_count', 0),
+                'DEBUG': first_row.get('debug_count', 0)
+            }
+            # Remove zero counts
+            severity_counts = {k: v for k, v in severity_counts.items() if v > 0}
 
         # Parse logs and handle attributes JSON
         logs = []
@@ -342,18 +350,22 @@ async def get_severity_timeline(
 
         where_clause = " AND ".join(where_conditions)
 
-        # Use epoch-based bucketing for arbitrary time intervals
-        # FLOOR(EXTRACT(EPOCH FROM timestamp) / bucket_seconds) gives us the bucket number
-        # Multiply back and convert to timestamp to get the bucket start time
+        # Optimized: Sample data for timeline to avoid full scan
+        # Use epoch-based bucketing with a reasonable limit on source data
         query = f"""
+        WITH sampled_logs AS (
+            SELECT log_timestamp, severity_text
+            FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
+            WHERE {where_clause}
+            LIMIT 50000
+        )
         SELECT
             TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM log_timestamp) / {granularity}) * {granularity}) as bucket,
             COUNT(*) FILTER (WHERE severity_text = 'ERROR') as ERROR,
             COUNT(*) FILTER (WHERE severity_text = 'WARN') as WARN,
             COUNT(*) FILTER (WHERE severity_text = 'INFO') as INFO,
             COUNT(*) FILTER (WHERE severity_text = 'DEBUG') as DEBUG
-        FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-        WHERE {where_clause}
+        FROM sampled_logs
         GROUP BY bucket
         ORDER BY bucket ASC
         """

@@ -36,58 +36,23 @@ async def get_dependency_graph(
     interval, seconds = get_time_range_interval(time_range)
 
     # Use Lakebase (PostgreSQL) backend only
+    # Optimized query - single scan for service health
     data_manager = LakebaseManager(user_token=user_token)
     query = f"""
-    WITH current_spans AS (
-      SELECT
-        span_value->>'service_name' as service_name,
-        (span_value->>'duration_ms')::float as duration_ms,
-        (span_value->>'is_error')::boolean as is_error,
-        t.trace_start
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE t.trace_start >= NOW() - INTERVAL '{interval}'
-    ),
-    baseline_spans AS (
-      SELECT
-        span_value->>'service_name' as service_name,
-        (span_value->>'duration_ms')::float as duration_ms
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE t.trace_start >= NOW() - INTERVAL '{interval}' - INTERVAL '{interval}'
-        AND t.trace_start < NOW() - INTERVAL '{interval}'
-    ),
-    current_metrics AS (
+    WITH service_health AS (
       SELECT
         service_name,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
         SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
         COUNT(*) as request_count,
-        CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate
-      FROM current_spans
-      GROUP BY service_name
-    ),
-    baseline_metrics AS (
-      SELECT
-        service_name,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
-        COUNT(*) / {seconds} as baseline_rps
-      FROM baseline_spans
-      GROUP BY service_name
-    ),
-    service_health AS (
-      SELECT
-        c.service_name,
-        c.error_count,
-        c.request_count,
-        c.error_rate,
+        CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
         CASE
-          WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
-          WHEN c.request_count / {seconds} > COALESCE(b.baseline_rps, c.request_count / {seconds}) THEN 'warning'
+          WHEN SUM(CASE WHEN is_error THEN 1 ELSE 0 END) > 0 THEN 'critical'
           ELSE 'healthy'
         END as health_status
-      FROM current_metrics c
-      LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
+      FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+      WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
+        AND service_name IS NOT NULL
+      GROUP BY service_name
     ),
     all_services AS (
       SELECT DISTINCT source_service as service_name FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced

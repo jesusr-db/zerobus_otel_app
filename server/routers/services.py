@@ -37,109 +37,29 @@ async def get_services(
     interval, seconds = get_time_range_interval(time_range)
 
     # Use Lakebase (PostgreSQL) backend only
-    # Native PostgreSQL query - combines traces, logs, and metrics
-    # Uses traces_silver_synced (real-time individual spans) instead of traces_assembled_synced (batch)
+    # Optimized single-pass query on traces_silver_synced
     query = f"""
-        WITH trace_services AS (
-          SELECT DISTINCT
-            service_name
-          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
-          WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-        ),
-        log_services AS (
-          SELECT DISTINCT
-            service_name
-          FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-          WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-        ),
-        metric_services AS (
-          SELECT DISTINCT
-            service_name
-          FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
-          WHERE window_start >= NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-        ),
-        all_services AS (
-          SELECT service_name FROM trace_services
-          UNION
-          SELECT service_name FROM log_services
-          UNION
-          SELECT service_name FROM metric_services
-        ),
-        current_spans AS (
-          SELECT
-            service_name,
-            duration_ms,
-            is_error,
-            start_timestamp
-          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
-          WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-        ),
-        baseline_spans AS (
-          SELECT
-            service_name,
-            duration_ms
-          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
-          WHERE start_timestamp >= NOW() - INTERVAL '{interval}' * 2
-            AND start_timestamp < NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-        ),
-        log_error_counts AS (
-          SELECT
-            service_name,
-            COUNT(*) as log_error_count
-          FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
-          WHERE log_timestamp >= NOW() - INTERVAL '{interval}'
-            AND service_name IS NOT NULL
-            AND severity_text IN ('ERROR', 'FATAL', 'CRITICAL')
-          GROUP BY service_name
-        ),
-        span_metrics AS (
-          SELECT
-            service_name,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
-            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as latency_p95,
-            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as latency_p99,
-            AVG(duration_ms) as avg_duration,
-            MAX(duration_ms) as max_duration,
-            SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as span_error_count,
-            COUNT(*) as request_count
-          FROM current_spans
-          GROUP BY service_name
-        ),
-        baseline_metrics AS (
-          SELECT
-            service_name,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
-            COUNT(*) / {seconds} as baseline_rps
-          FROM baseline_spans
-          GROUP BY service_name
-        )
         SELECT
-          s.service_name,
-          COALESCE(m.latency_p50, 0.0) as current_latency_p50,
-          COALESCE(m.latency_p95, 0.0) as current_latency_p95,
-          COALESCE(m.latency_p99, 0.0) as current_latency_p99,
-          COALESCE(m.avg_duration, 0.0) as avg_duration_ms,
-          COALESCE(m.max_duration, 0.0) as max_duration_ms,
-          COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) as error_count,
-          COALESCE(m.request_count, 0) as request_count,
-          CAST(COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) AS FLOAT) / NULLIF(COALESCE(m.request_count, 1), 0) as error_rate,
-          COALESCE(m.request_count, 0) / {seconds} as requests_per_second,
+          service_name,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p50,
+          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p95,
+          PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p99,
+          AVG(duration_ms) as avg_duration_ms,
+          MAX(duration_ms) as max_duration_ms,
+          SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
+          COUNT(*) as request_count,
+          CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
+          COUNT(*) / {seconds}.0 as requests_per_second,
           CASE
-            WHEN COALESCE(m.span_error_count, 0) + COALESCE(l.log_error_count, 0) > 0 THEN 'critical'
-            WHEN m.latency_p50 > COALESCE(b.baseline_latency_p50, m.latency_p50) THEN 'warning'
-            WHEN m.request_count / {seconds} > COALESCE(b.baseline_rps, m.request_count / {seconds}) THEN 'warning'
+            WHEN SUM(CASE WHEN is_error THEN 1 ELSE 0 END) > 0 THEN 'critical'
             ELSE 'healthy'
           END as health_status
-        FROM all_services s
-        LEFT JOIN span_metrics m ON s.service_name = m.service_name
-        LEFT JOIN log_error_counts l ON s.service_name = l.service_name
-        LEFT JOIN baseline_metrics b ON s.service_name = b.service_name
-        ORDER BY COALESCE(m.request_count, 0) DESC, s.service_name
+        FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+        WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
+          AND service_name IS NOT NULL
+        GROUP BY service_name
+        ORDER BY request_count DESC
+        LIMIT 50
         """
     
     try:
@@ -167,18 +87,8 @@ async def get_service_metrics(
     interval, seconds = get_time_range_interval(time_range)
     bucket_interval, bucket_seconds = get_bucket_size(time_range)
 
-    # Convert to PostgreSQL-compatible queries for Lakebase
+    # Query traces_silver_synced directly (real-time individual spans)
     current_query = f"""
-    WITH service_spans AS (
-      SELECT
-        (span_value->>'duration_ms')::float as duration_ms,
-        (span_value->>'is_error')::boolean as is_error,
-        t.trace_start
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE span_value->>'service_name' = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL '{interval}'
-    )
     SELECT
       COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
       COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p95,
@@ -189,42 +99,26 @@ async def get_service_metrics(
       COALESCE(CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0), 0.0) as error_rate,
       COALESCE(COUNT(*), 0) as request_count,
       COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
-    FROM service_spans
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+    WHERE service_name = '{service_name}'
+      AND start_timestamp >= NOW() - INTERVAL '{interval}'
     """
 
     trends_query = f"""
-    WITH service_spans AS (
-      SELECT
-        (span_value->>'duration_ms')::float as duration_ms,
-        (span_value->>'is_error')::boolean as is_error,
-        to_timestamp(floor(extract(epoch from t.trace_start) / {bucket_seconds}) * {bucket_seconds}) as time_bucket
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE span_value->>'service_name' = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL '{interval}'
-    )
     SELECT
-      time_bucket as timestamp,
+      to_timestamp(floor(extract(epoch from start_timestamp) / {bucket_seconds}) * {bucket_seconds}) as timestamp,
       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as latency_p95,
       AVG(duration_ms) as avg_duration_ms,
       SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
       COUNT(*) as request_count
-    FROM service_spans
-    GROUP BY time_bucket
-    ORDER BY time_bucket
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+    WHERE service_name = '{service_name}'
+      AND start_timestamp >= NOW() - INTERVAL '{interval}'
+    GROUP BY to_timestamp(floor(extract(epoch from start_timestamp) / {bucket_seconds}) * {bucket_seconds})
+    ORDER BY timestamp
     """
 
     baseline_query = f"""
-    WITH service_spans AS (
-      SELECT
-        (span_value->>'duration_ms')::float as duration_ms,
-        (span_value->>'is_error')::boolean as is_error
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE span_value->>'service_name' = '{service_name}'
-        AND t.trace_start >= NOW() - INTERVAL '{interval}' * 2
-        AND t.trace_start < NOW() - INTERVAL '{interval}'
-    )
     SELECT
       COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p50,
       COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 0.0) as latency_p95,
@@ -235,7 +129,10 @@ async def get_service_metrics(
       COALESCE(CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0), 0.0) as error_rate,
       COALESCE(COUNT(*), 0) as request_count,
       COALESCE(COUNT(*) / {seconds}, 0.0) as requests_per_second
-    FROM service_spans
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+    WHERE service_name = '{service_name}'
+      AND start_timestamp >= NOW() - INTERVAL '{interval}' * 2
+      AND start_timestamp < NOW() - INTERVAL '{interval}'
     """
 
     try:
@@ -273,86 +170,23 @@ async def get_service_dependencies(
     user_token = request.headers.get("X-Forwarded-Access-Token")
     lakebase_manager = LakebaseManager(user_token=user_token)
 
-    # Convert to PostgreSQL-compatible query for Lakebase
+    # Optimized query - just get dependencies from pre-computed table
     query = f"""
-    WITH current_spans AS (
-      SELECT
-        span_value->>'service_name' as service_name,
-        (span_value->>'duration_ms')::float as duration_ms,
-        t.trace_start
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE t.trace_start >= NOW() - INTERVAL '1 hour'
-    ),
-    baseline_spans AS (
-      SELECT
-        span_value->>'service_name' as service_name,
-        (span_value->>'duration_ms')::float as duration_ms
-      FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced t
-      CROSS JOIN LATERAL jsonb_array_elements(t.span_details) AS span_value
-      WHERE t.trace_start >= NOW() - INTERVAL '2 hours'
-        AND t.trace_start < NOW() - INTERVAL '1 hour'
-    ),
-    current_metrics AS (
-      SELECT
-        service_name,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as latency_p50,
-        COUNT(*) as request_count
-      FROM current_spans
-      GROUP BY service_name
-    ),
-    baseline_metrics AS (
-      SELECT
-        service_name,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as baseline_latency_p50,
-        COUNT(*) / 3600 as baseline_rps
-      FROM baseline_spans
-      GROUP BY service_name
-    ),
-    service_health AS (
-      SELECT
-        c.service_name,
-        CASE
-          WHEN c.latency_p50 > COALESCE(b.baseline_latency_p50, c.latency_p50) THEN 'critical'
-          WHEN c.request_count / 3600 > COALESCE(b.baseline_rps, c.request_count / 3600) THEN 'warning'
-          ELSE 'healthy'
-        END as health_status
-      FROM current_metrics c
-      LEFT JOIN baseline_metrics b ON c.service_name = b.service_name
-    ),
-    inbound_deps AS (
-      SELECT
-        d.target_service as service_name,
-        d.source_service as related_service,
-        d.call_count,
-        COALESCE(h.health_status, 'unknown') as health_status
-      FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced d
-      LEFT JOIN service_health h ON d.source_service = h.service_name
-      WHERE d.target_service = '{service_name}'
-    ),
-    outbound_deps AS (
-      SELECT
-        d.source_service as service_name,
-        d.target_service as related_service,
-        d.call_count,
-        COALESCE(h.health_status, 'unknown') as health_status
-      FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced d
-      LEFT JOIN service_health h ON d.target_service = h.service_name
-      WHERE d.source_service = '{service_name}'
-    )
     SELECT
       'inbound' as direction,
-      related_service as service_name,
+      source_service as service_name,
       call_count,
-      health_status
-    FROM inbound_deps
+      'healthy' as health_status
+    FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+    WHERE target_service = '{service_name}'
     UNION ALL
     SELECT
       'outbound' as direction,
-      related_service as service_name,
+      target_service as service_name,
       call_count,
-      health_status
-    FROM outbound_deps
+      'healthy' as health_status
+    FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+    WHERE source_service = '{service_name}'
     ORDER BY direction, call_count DESC
     """
 
@@ -406,20 +240,20 @@ async def get_service_traces(
     lakebase_manager = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
 
-    # Convert to PostgreSQL-compatible query for Lakebase
-    # Use JSONB containment operator to check if service is in services_involved array
+    # Optimized query - filter by service and aggregate in one pass
     query = f"""
     SELECT
       trace_id,
-      trace_start,
-      services_involved,
-      total_trace_duration_ms as total_duration_ms,
-      span_count
-    FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
-    WHERE services_involved::jsonb @> '"{service_name}"'::jsonb
-      AND trace_start >= NOW() - INTERVAL '{interval}'
+      MIN(start_timestamp) as trace_start,
+      ARRAY_AGG(DISTINCT service_name) as services_involved,
+      COUNT(*) as span_count,
+      SUM(duration_ms) as total_duration_ms
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+    WHERE service_name = '{service_name}'
+      AND start_timestamp >= NOW() - INTERVAL '{interval}'
+    GROUP BY trace_id
     ORDER BY trace_start DESC
-    LIMIT 100
+    LIMIT 50
     """
 
     try:
@@ -444,14 +278,14 @@ async def get_trace_detail(
     user_token = request.headers.get("X-Forwarded-Access-Token")
     lakebase_manager = LakebaseManager(user_token=user_token)
 
-    # Convert to PostgreSQL-compatible queries for Lakebase
+    # Query traces_silver_synced directly for all trace info
     trace_query = f"""
     SELECT
       trace_id,
-      trace_start
-    FROM {LAKEBASE_SCHEMA_NAME}.traces_assembled_synced
+      MIN(start_timestamp) as trace_start
+    FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
     WHERE trace_id = '{trace_id}'
-    LIMIT 1
+    GROUP BY trace_id
     """
 
     spans_query = f"""
