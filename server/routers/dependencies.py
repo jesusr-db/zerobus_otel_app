@@ -54,10 +54,15 @@ async def get_dependency_graph(
         AND service_name IS NOT NULL
       GROUP BY service_name
     ),
+    recent_dependencies AS (
+      SELECT source_service, target_service, call_count
+      FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+      WHERE last_seen >= NOW() - INTERVAL '{interval}'
+    ),
     all_services AS (
-      SELECT DISTINCT source_service as service_name FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+      SELECT DISTINCT source_service as service_name FROM recent_dependencies
       UNION
-      SELECT DISTINCT target_service as service_name FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
+      SELECT DISTINCT target_service as service_name FROM recent_dependencies
     )
     SELECT
       'node' as row_type,
@@ -82,7 +87,7 @@ async def get_dependency_graph(
       d.source_service as source,
       d.target_service as target,
       d.call_count as "callCount"
-    FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced d
+    FROM recent_dependencies d
     """
     
     try:

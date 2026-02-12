@@ -163,14 +163,16 @@ async def get_service_metrics(
 @router.get("/{service_name}/dependencies")
 async def get_service_dependencies(
     request: Request,
-    service_name: str
+    service_name: str,
+    time_range: TimeRange = Query(default="1h", description="Time range for dependencies")
 ):
     from server.models.observability import ServiceDependencies, DependencyInfo
 
     user_token = request.headers.get("X-Forwarded-Access-Token")
     lakebase_manager = LakebaseManager(user_token=user_token)
+    interval, _ = get_time_range_interval(time_range)
 
-    # Optimized query - just get dependencies from pre-computed table
+    # Filter dependencies by last_seen within time range
     query = f"""
     SELECT
       'inbound' as direction,
@@ -179,6 +181,7 @@ async def get_service_dependencies(
       'healthy' as health_status
     FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
     WHERE target_service = '{service_name}'
+      AND last_seen >= NOW() - INTERVAL '{interval}'
     UNION ALL
     SELECT
       'outbound' as direction,
@@ -187,6 +190,7 @@ async def get_service_dependencies(
       'healthy' as health_status
     FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
     WHERE source_service = '{service_name}'
+      AND last_seen >= NOW() - INTERVAL '{interval}'
     ORDER BY direction, call_count DESC
     """
 
