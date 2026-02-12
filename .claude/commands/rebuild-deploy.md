@@ -11,7 +11,7 @@ I'll rebuild the frontend and deploy your app to Databricks using Databricks Ass
 1. **Rebuild frontend** - Clean build of React app with Vite + Bun
 2. **Deploy with DABs** - Use `databricks bundle deploy` to sync and deploy
 3. **Run the app** - Use `databricks bundle run` to start/restart the app
-4. **Monitor deployment** - Check logs and verify successful startup
+4. **Monitor deployment** - `databricks apps logs db-chatbot-dev-jesus-rodriguez --follow | grep error` Check logs and verify successful startup
 5. **Provide app URL** - Give you the deployed app URL
 
 ## Rebuild and Deploy Workflow
@@ -82,21 +82,11 @@ databricks bundle run o11y_jmr_app
 ### Step 4: Monitor Deployment
 
 ```bash
-# Check app status
-databricks apps get o11y-jmr --output json | jq '.compute_status.state, .url'
-
-# Get app URL
-APP_URL=$(databricks apps get o11y-jmr --output json | jq -r '.url')
-echo "App URL: $APP_URL"
-
-# Monitor logs for startup (60 seconds)
-python dba_logz.py $APP_URL --search "Application startup complete|Uvicorn running" --duration 60
+databricks apps logs o11y_jmr_app --follow | grep error
 ```
 
 **What to look for:**
-- Compute status: "ACTIVE"
-- Deployment status: "SUCCEEDED"
-- Logs show: "Application startup complete" and "Uvicorn running"
+- Any Errors in deployment - that can be leveraged to troubleshoot further
 
 ## Usage
 
@@ -189,7 +179,7 @@ cat databricks.yml
 databricks apps get o11y-jmr
 
 # Check logs for errors
-python dba_logz.py <app-url> --duration 30
+databricks apps logs db-chatbot-dev-jesus-rodriguez --follow | grep error
 
 # Try manual restart
 databricks apps stop o11y-jmr
@@ -199,13 +189,7 @@ databricks apps start o11y-jmr
 **App doesn't start:**
 ```bash
 # Check for Python exceptions in logs
-python dba_logz.py <app-url> --search "Exception|Error|Traceback" --duration 60
-
-# Verify app configuration
-databricks apps get o11y-jmr --output json | jq '.active_deployment'
-
-# Check resource allocation
-databricks apps get o11y-jmr --output json | jq '.compute_status'
+databricks apps logs db-chatbot-dev-jesus-rodriguez --follow | grep error
 ```
 
 ## Post-Deployment Verification
