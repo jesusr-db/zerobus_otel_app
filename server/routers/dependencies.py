@@ -63,6 +63,15 @@ async def get_dependency_graph(
       SELECT DISTINCT source_service as service_name FROM recent_dependencies
       UNION
       SELECT DISTINCT target_service as service_name FROM recent_dependencies
+      UNION
+      SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+      WHERE start_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+      UNION
+      SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
+      WHERE log_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+      UNION
+      SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
+      WHERE window_start >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
     )
     SELECT
       'node' as row_type,

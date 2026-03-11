@@ -36,29 +36,74 @@ async def get_services(
     data_manager = LakebaseManager(user_token=user_token)
     interval, seconds = get_time_range_interval(time_range)
 
-    # Use Lakebase (PostgreSQL) backend only
-    # Optimized single-pass query on traces_silver_synced
+    # Discover service names from all available sources (traces, logs, metrics)
+    # so panels populate even when one source (e.g. traces) has no data
     query = f"""
+        WITH all_service_names AS (
+          SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+          WHERE start_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+          UNION
+          SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
+          WHERE log_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+          UNION
+          SELECT DISTINCT service_name FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
+          WHERE window_start >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+        ),
+        trace_metrics AS (
+          SELECT
+            service_name,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p50,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p95,
+            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p99,
+            AVG(duration_ms) as avg_duration_ms,
+            MAX(duration_ms) as max_duration_ms,
+            SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
+            COUNT(*) as request_count,
+            CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
+            COUNT(*) / {seconds}.0 as requests_per_second
+          FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
+          WHERE start_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+          GROUP BY service_name
+        ),
+        log_health AS (
+          SELECT
+            service_name,
+            COUNT(*) FILTER (WHERE severity_text = 'ERROR') as log_error_count,
+            COUNT(*) as log_count
+          FROM {LAKEBASE_SCHEMA_NAME}.logs_synced
+          WHERE log_timestamp >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+          GROUP BY service_name
+        ),
+        metric_health AS (
+          SELECT
+            service_name,
+            COUNT(*) as metric_sample_count,
+            AVG(avg_value) as metric_avg_value
+          FROM {LAKEBASE_SCHEMA_NAME}.metrics_1min_synced
+          WHERE window_start >= NOW() - INTERVAL '{interval}' AND service_name IS NOT NULL
+          GROUP BY service_name
+        )
         SELECT
-          service_name,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p50,
-          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p95,
-          PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) as current_latency_p99,
-          AVG(duration_ms) as avg_duration_ms,
-          MAX(duration_ms) as max_duration_ms,
-          SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
-          COUNT(*) as request_count,
-          CAST(SUM(CASE WHEN is_error THEN 1 ELSE 0 END) AS FLOAT) / NULLIF(COUNT(*), 0) as error_rate,
-          COUNT(*) / {seconds}.0 as requests_per_second,
+          a.service_name,
+          COALESCE(t.current_latency_p50, 0.0) as current_latency_p50,
+          COALESCE(t.current_latency_p95, 0.0) as current_latency_p95,
+          COALESCE(t.current_latency_p99, 0.0) as current_latency_p99,
+          COALESCE(t.avg_duration_ms, 0.0) as avg_duration_ms,
+          COALESCE(t.max_duration_ms, 0.0) as max_duration_ms,
+          COALESCE(t.error_count, 0) as error_count,
+          COALESCE(t.request_count, 0) as request_count,
+          COALESCE(t.error_rate, 0.0) as error_rate,
+          COALESCE(t.requests_per_second, 0.0) as requests_per_second,
           CASE
-            WHEN SUM(CASE WHEN is_error THEN 1 ELSE 0 END) > 0 THEN 'critical'
+            WHEN COALESCE(t.error_count, 0) > 0 THEN 'critical'
+            WHEN COALESCE(l.log_error_count, 0) > 0 THEN 'warning'
             ELSE 'healthy'
           END as health_status
-        FROM {LAKEBASE_SCHEMA_NAME}.traces_silver_synced
-        WHERE start_timestamp >= NOW() - INTERVAL '{interval}'
-          AND service_name IS NOT NULL
-        GROUP BY service_name
-        ORDER BY request_count DESC
+        FROM all_service_names a
+        LEFT JOIN trace_metrics t ON a.service_name = t.service_name
+        LEFT JOIN log_health l ON a.service_name = l.service_name
+        LEFT JOIN metric_health m ON a.service_name = m.service_name
+        ORDER BY COALESCE(t.request_count, 0) DESC, a.service_name
         LIMIT 50
         """
     

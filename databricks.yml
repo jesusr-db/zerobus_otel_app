@@ -16,22 +16,24 @@ variables:
     default: "5067b513037fbf07"
   catalog_name:
     description: Catalog name for observability tables
-    default: "jmr_demo"
+    default: "vdm_classic_rikfy0_catalog"
   schema_name:
     description: Schema name for observability tables
     default: "zerobus_sdp"
   database_instance_name: 
     default: "zerobus-otel" 
   database_host_name: 
-    default: "instance-80fb787b-dfab-43fc-a291-81aee89749b0.database.staging.cloud.databricks.com"
+    default: "instance-b0ae1d45-befb-4d14-b814-c9fe96e42130.database.cloud.databricks.com"
 
 targets:
   dev:
     mode: development
+    workspace:
+      profile: DEFAULT
     default: true
     variables: 
       database_instance_name: "zerobus-dev"
-      database_host_name: "instance-b84928e9-0966-4791-a9a7-bd0006b3c781.database.cloud.databricks.com"
+      database_host_name: "instance-2b09f0f0-6e6c-499f-a688-ffebf0eabbaf.database.cloud.databricks.com"
       warehouse_id: "5067b513037fbf07"
 
 
@@ -46,7 +48,7 @@ targets:
       schema_name: dev_jesus_rodriguez_jmr_demo
       warehouse_id: "dd43ee29fedd958d"
       database_instance_name: "zerobus-otel"
-      database_host_name: "instance-80fb787b-dfab-43fc-a291-81aee89749b0.database.staging.cloud.databricks.com"
+      database_host_name: "instance-4591b32f-c27f-4322-a214-42dd18057fa0.database.staging.cloud.databricks.com"
 
   prod:
     mode: production
