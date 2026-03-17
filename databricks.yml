@@ -42,13 +42,14 @@ targets:
 
     workspace:
       host: https://e2-dogfood.staging.cloud.databricks.com
+      profile: dogfood
 
     variables:
       catalog_name: main
       schema_name: dev_jesus_rodriguez_jmr_demo
       warehouse_id: "dd43ee29fedd958d"
       database_instance_name: "zerobus-otel"
-      database_host_name: "instance-4591b32f-c27f-4322-a214-42dd18057fa0.database.staging.cloud.databricks.com"
+      database_host_name: "ep-small-breeze-y1hvqfgb.database.us-west-2.staging.cloud.databricks.com"
 
   prod:
     mode: production
