@@ -7,49 +7,98 @@ include:
 sync:
   include:
     - notebooks/*
+    - pipeline/**
 
-
+# Variables combining app + pipeline needs
 variables:
   warehouse_id:
-    description: SQL Warehouse ID for the app
-    # default: "8baced1ff014912d"
+    description: SQL Warehouse ID for the app and queries
     default: "5067b513037fbf07"
   catalog_name:
-    description: Catalog name for observability tables
+    description: Unity Catalog name for observability tables
     default: "vdm_classic_rikfy0_catalog"
   schema_name:
     description: Schema name for observability tables
     default: "zerobus_sdp"
-  database_instance_name: 
-    default: "zerobus-otel" 
-  database_host_name: 
+  database_instance_name:
+    description: Lakebase database instance name
+    default: "zerobus-otel"
+  database_host_name:
+    description: Lakebase database host name
     default: "instance-b0ae1d45-befb-4d14-b814-c9fe96e42130.database.cloud.databricks.com"
+  bronze_catalog:
+    description: Bronze layer catalog
+    default: vdm_classic_rikfy0_catalog
+  bronze_schema:
+    description: Bronze layer schema
+    default: zerobus
+  bronze_table_prefix:
+    description: Bronze table prefix
+    default: otel
+  alert_webhook_url:
+    description: Webhook URL for anomaly alerts (optional)
+    default: ""
+  alert_email:
+    description: Email for job notifications (optional)
+    default: ""
+  checkpoint_location:
+    description: Checkpoint location for streaming pipelines
+    default: "/Volumes/jmr_demo/zerobus/checkpoints/service_health"
 
 targets:
   dev:
     mode: development
-    workspace:
-      profile: DEFAULT
     default: true
-    variables: 
+    workspace:
+      host: https://fe-vm-vdm-classic-rikfy0.cloud.databricks.com
+    variables:
+      catalog_name: vdm_classic_rikfy0_catalog
+      schema_name: zerobus_sdp
+      warehouse_id: "5067b513037fbf07"
       database_instance_name: "zerobus-dev"
       database_host_name: "instance-2b09f0f0-6e6c-499f-a688-ffebf0eabbaf.database.cloud.databricks.com"
-      warehouse_id: "5067b513037fbf07"
 
+    resources:
+      jobs:
+        dev_job:
+          schedule:
+            quartz_cron_expression: "0 0 * * * ?"
+            timezone_id: "UTC"
+            pause_status: UNPAUSED
+      pipelines:
+        silver_streaming_pipeline:
+          development: true
+          continuous: false
+        gold_aggregations_pipeline:
+          development: true
 
   dogfood:
     mode: development
-
     workspace:
       host: https://e2-dogfood.staging.cloud.databricks.com
       profile: dogfood
 
     variables:
+      bronze_catalog: andre
+      bronze_schema: otel
+      bronze_table_prefix: otel
       catalog_name: main
       schema_name: dev_jesus_rodriguez_jmr_demo
       warehouse_id: "dd43ee29fedd958d"
       database_instance_name: "zerobus-otel"
       database_host_name: "ep-small-breeze-y1hvqfgb.database.us-west-2.staging.cloud.databricks.com"
+
+    resources:
+      jobs:
+        dev_job:
+          schedule:
+            pause_status: PAUSED
+      pipelines:
+        silver_streaming_pipeline:
+          development: true
+          continuous: true
+        gold_aggregations_pipeline:
+          development: true
 
   prod:
     mode: production
@@ -57,3 +106,7 @@ targets:
       root_path: /Workspace/.bundle/${bundle.name}/${bundle.target}
     run_as:
       service_principal_name: ${var.service_principal_name}
+
+permissions:
+  - level: CAN_MANAGE
+    user_name: jesus.rodriguez@databricks.com

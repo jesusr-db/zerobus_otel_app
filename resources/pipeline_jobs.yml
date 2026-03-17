@@ -1,0 +1,205 @@
+# Databricks Jobs for Observability Pipeline
+# All jobs use serverless compute for cost optimization and faster startup
+
+resources:
+  jobs:
+    # =======================================================================
+    # SYNCED TABLES SETUP (On-demand)
+    # =======================================================================
+    setup_synced_tables:
+      name: "[${bundle.target}] Setup Synced Tables"
+
+      environments:
+        - environment_key: synced_tables_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+
+      tasks:
+        - task_key: create_synced_tables
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_synced_tables.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+
+      tags:
+        environment: ${bundle.target}
+        layer: setup
+        team: data-engineering
+        usecase: otel
+
+    # =======================================================================
+    # DESTROY SYNCED TABLES (On-demand)
+    # =======================================================================
+    destroy_synced_tables:
+      name: "[${bundle.target}] Destroy Synced Tables"
+
+      environments:
+        - environment_key: synced_tables_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+
+      tasks:
+        - task_key: destroy_synced_tables
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/destroy_synced_tables.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+      max_concurrent_runs: 1
+      timeout_seconds: 600
+
+      tags:
+        environment: ${bundle.target}
+        layer: cleanup
+        team: data-engineering
+        usecase: otel
+
+    # =======================================================================
+    # FULL PIPELINE SETUP (On-demand)
+    # Runs complete pipeline setup:
+    # 1. Silver pipeline -> Gold pipeline
+    # 2. Setup synced tables (parallel with pipelines)
+    # 3. Sync service_dependencies & traces_assembled to Lakebase
+    # =======================================================================
+    full_pipeline_setup:
+      name: "[${bundle.target}] Full Pipeline Setup"
+
+      environments:
+        - environment_key: synced_tables_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+
+      tasks:
+        # Phase 1: Run in parallel
+        - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
+            full_refresh: false
+
+        - task_key: run_gold_pipeline
+          depends_on:
+            - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
+            full_refresh: false
+
+        - task_key: setup_synced_tables
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_synced_tables.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+        # Phase 2: Run after all Phase 1 tasks complete
+        - task_key: sync_service_dependencies
+          depends_on:
+            - task_key: run_gold_pipeline
+            - task_key: setup_synced_tables
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_service_dependencies_sync.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+        - task_key: sync_traces_assembled
+          depends_on:
+            - task_key: run_gold_pipeline
+            - task_key: setup_synced_tables
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_traces_assembled_sync.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      tags:
+        environment: ${bundle.target}
+        layer: setup
+        team: data-engineering
+        usecase: otel
+
+    # =======================================================================
+    # DEV JOB (Hourly)
+    # Runs silver -> gold -> lakebase sync pipeline every hour
+    # =======================================================================
+    dev_job:
+      name: "[${bundle.target}] Dev Pipeline"
+
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"  # Every hour
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      environments:
+        - environment_key: synced_tables_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+
+      tasks:
+        - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
+            full_refresh: false
+
+        - task_key: run_gold_pipeline
+          depends_on:
+            - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
+            full_refresh: false
+
+        - task_key: sync_service_dependencies
+          depends_on:
+            - task_key: run_gold_pipeline
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_service_dependencies_sync.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+        - task_key: sync_traces_assembled
+          depends_on:
+            - task_key: run_gold_pipeline
+          environment_key: synced_tables_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/setup_traces_assembled_sync.py
+            base_parameters:
+              database_instance: "${var.database_instance_name}"
+              catalog_name: "${var.catalog_name}"
+              schema_name: "${var.schema_name}"
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+
+      tags:
+        environment: ${bundle.target}
+        layer: dev
+        team: data-engineering
+        usecase: otel
