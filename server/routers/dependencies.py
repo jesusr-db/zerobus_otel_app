@@ -57,7 +57,6 @@ async def get_dependency_graph(
     recent_dependencies AS (
       SELECT source_service, target_service, call_count
       FROM {LAKEBASE_SCHEMA_NAME}.service_dependencies_synced
-      WHERE last_active >= NOW() - INTERVAL '{interval}'
     ),
     all_services AS (
       SELECT DISTINCT source_service as service_name FROM recent_dependencies
