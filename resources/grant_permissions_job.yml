@@ -1,32 +1,33 @@
 resources:
   jobs:
     grant_lakebase_permissions:
-      name: grant_lakebase_permissions_${bundle.target}
-      
+      name: "[${bundle.target}] Grant Lakebase Permissions"
+
+      environments:
+        - environment_key: grant_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+              - psycopg2-binary
+
       tasks:
         - task_key: grant_permissions
+          environment_key: grant_env
           notebook_task:
             notebook_path: ../notebooks/grant_lakebase_permissions.py
-            source: WORKSPACE
-          
+            base_parameters:
+              APP_NAME: o11y-jmr
+              LAKEBASE_INSTANCE_NAME: ${var.database_instance_name}
+              LAKEBASE_DATABASE_NAME: ${var.schema_name}
+              LAKEBASE_SCHEMA_NAME: ${var.schema_name}
+
           timeout_seconds: 600
-      
-      parameters:
-        - name: APP_NAME
-          default: o11y-jmr
-        - name: LAKEBASE_INSTANCE_NAME
-          default: ${var.database_instance_name}
-        - name: LAKEBASE_HOST
-          default: ${var.database_host_name}
-        - name: LAKEBASE_PORT
-          default: "5432"
-        - name: LAKEBASE_DATABASE_NAME
-          default: ${var.schema_name}
-        - name: LAKEBASE_SCHEMA_NAME
-          default: ${var.schema_name}
-      
+
       max_concurrent_runs: 1
-      
+
       tags:
-        purpose: "Grant Lakebase permissions to app service principal"
-        app: "o11y-jmr"
+        environment: ${bundle.target}
+        layer: setup
+        team: data-engineering
+        usecase: otel

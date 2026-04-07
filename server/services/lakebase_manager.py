@@ -34,22 +34,43 @@ class LakebaseManager:
             logger.error(f"Failed to initialize WorkspaceClient: {e}")
             raise
         
-        # Lakebase configuration from environment
-        self.instance_name = os.getenv("LAKEBASE_INSTANCE_NAME", "zerobus-dev")
-        self.database_name = os.getenv("LAKEBASE_DATABASE_NAME", "databricks_postgres")
+        # Lakebase configuration - prefer app resource binding (PG* env vars),
+        # fall back to manual env vars for local development.
+        # When a database resource is added to a Databricks App, the platform
+        # injects: PGHOST, PGPORT, PGDATABASE, PGUSER, PGSSLMODE, PGAPPNAME
+        pg_host = os.getenv("PGHOST")
+
+        if pg_host:
+            # App resource binding provides connection info via PG* env vars
+            logger.info("Using Lakebase connection from app resource binding (PG* env vars)")
+            self.db_host = pg_host
+            self.db_port = int(os.getenv("PGPORT", "5432"))
+            self.instance_name = os.getenv("LAKEBASE_INSTANCE_NAME", "zerobus-dev")
+            self.database_name = os.getenv("PGDATABASE", "databricks_postgres")
+        else:
+            # Fall back to manual env vars (local development)
+            logger.info("Using Lakebase connection from manual env vars")
+            self.db_host = os.getenv("LAKEBASE_HOST")
+            self.db_port = int(os.getenv("LAKEBASE_PORT", "5432"))
+            self.instance_name = os.getenv("LAKEBASE_INSTANCE_NAME", "zerobus-dev")
+            self.database_name = os.getenv("LAKEBASE_DATABASE_NAME", "zerobus_sdp")
+
         self.catalog_name = os.getenv("LAKEBASE_CATALOG_NAME", "zerobus_sdp")
         self.schema_name = os.getenv("LAKEBASE_SCHEMA_NAME", "zerobus_sdp")
-        
-        # Connection details
-        self.db_host = os.getenv("LAKEBASE_HOST")  # e.g., "instance-xxx.databricks.com"
-        self.db_port = int(os.getenv("LAKEBASE_PORT", "5432"))
         self.ssl_mode = os.getenv("LAKEBASE_SSL_MODE", "require")
-        
-        # Get service principal for connection
-        self.sp_client_id = client_id or os.getenv("DATABRICKS_CLIENT_ID")
-        
+
+        # Get connection user: prefer PGUSER from resource binding, fall back to SP client ID
+        self.pg_user = os.getenv("PGUSER") or client_id or os.getenv("DATABRICKS_CLIENT_ID")
+
         if not self.db_host:
-            raise ValueError("LAKEBASE_HOST environment variable is required")
+            # Log all database-related env vars for debugging
+            db_env = {k: v for k, v in os.environ.items()
+                      if any(p in k.upper() for p in ['DATABASE', 'LAKEBASE', 'POSTGRES', 'PG_'])}
+            logger.error(f"Lakebase host not found. Database-related env vars: {db_env}")
+            raise ValueError(
+                "Lakebase host not found. Either add a database_instance resource to app.yml "
+                "or set LAKEBASE_HOST environment variable."
+            )
         
         # OAuth token management
         self.postgres_password: Optional[str] = None
@@ -75,7 +96,7 @@ class LakebaseManager:
         
         # Build connection string (password will be injected via event listener)
         connection_string = (
-            f"postgresql+psycopg2://{self.sp_client_id}:@{self.db_host}:{self.db_port}/"
+            f"postgresql+psycopg2://{self.pg_user}:@{self.db_host}:{self.db_port}/"
             f"{self.database_name}?sslmode={self.ssl_mode}"
         )
         

@@ -83,9 +83,15 @@ resources:
             client: "1"
             dependencies:
               - databricks-sdk>=0.35.0
+        - environment_key: grant_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
+              - psycopg2-binary
 
       tasks:
-        # Phase 1: Run in parallel
+        # Phase 1: Run pipelines
         - task_key: run_silver_pipeline
           pipeline_task:
             pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
@@ -98,7 +104,10 @@ resources:
             pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
             full_refresh: false
 
+        # Phase 2: Setup synced tables (after silver creates source tables)
         - task_key: setup_synced_tables
+          depends_on:
+            - task_key: run_silver_pipeline
           environment_key: synced_tables_env
           notebook_task:
             notebook_path: ../pipeline/scripts/setup_synced_tables.py
@@ -107,7 +116,7 @@ resources:
               catalog_name: "${var.catalog_name}"
               schema_name: "${var.schema_name}"
 
-        # Phase 2: Run after all Phase 1 tasks complete
+        # Phase 3: Sync gold tables + grant app permissions
         - task_key: sync_service_dependencies
           depends_on:
             - task_key: run_gold_pipeline
@@ -131,6 +140,18 @@ resources:
               database_instance: "${var.database_instance_name}"
               catalog_name: "${var.catalog_name}"
               schema_name: "${var.schema_name}"
+
+        - task_key: grant_app_permissions
+          depends_on:
+            - task_key: setup_synced_tables
+          environment_key: grant_env
+          notebook_task:
+            notebook_path: ../notebooks/grant_lakebase_permissions.py
+            base_parameters:
+              APP_NAME: o11y-jmr
+              LAKEBASE_INSTANCE_NAME: "${var.database_instance_name}"
+              LAKEBASE_DATABASE_NAME: "${var.schema_name}"
+              LAKEBASE_SCHEMA_NAME: "${var.schema_name}"
 
       max_concurrent_runs: 1
       timeout_seconds: 7200

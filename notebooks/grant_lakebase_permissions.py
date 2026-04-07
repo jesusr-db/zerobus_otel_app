@@ -9,14 +9,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install --upgrade psycopg2-binary databricks-sdk
-
-# COMMAND ----------
-
-dbutils.library.restartPython()
-
-# COMMAND ----------
-
 import json
 from databricks.sdk import WorkspaceClient
 import psycopg2
@@ -24,40 +16,20 @@ import psycopg2
 # COMMAND ----------
 
 # Configuration from job parameters
-try:
-    app_name = dbutils.widgets.get("APP_NAME")
-except:
-    app_name = "o11y-jmr"
+dbutils.widgets.text("APP_NAME", "o11y-jmr", "App Name")
+dbutils.widgets.text("LAKEBASE_INSTANCE_NAME", "zerobus-dev", "Lakebase Instance")
+dbutils.widgets.text("LAKEBASE_DATABASE_NAME", "zerobus_sdp", "Database Name")
+dbutils.widgets.text("LAKEBASE_SCHEMA_NAME", "zerobus_sdp", "Schema Name")
 
-try:
-    instance_name = dbutils.widgets.get("LAKEBASE_INSTANCE_NAME")
-except:
-    instance_name = "zerobus-dev"
-
-try:
-    lakebase_host = dbutils.widgets.get("LAKEBASE_HOST")
-except:
-    lakebase_host = "instance-c33627a6-422c-461a-82f7-ac78b0a6d72a.database.cloud.databricks.com"
-
-try:
-    lakebase_port = int(dbutils.widgets.get("LAKEBASE_PORT"))
-except:
-    lakebase_port = 5432
-
-try:
-    lakebase_database = dbutils.widgets.get("LAKEBASE_DATABASE_NAME")
-except:
-    lakebase_database = "zerobus_sdp"
-
-try:
-    lakebase_schema = dbutils.widgets.get("LAKEBASE_SCHEMA_NAME")
-except:
-    lakebase_schema = "zerobus_sdp"
+app_name = dbutils.widgets.get("APP_NAME")
+instance_name = dbutils.widgets.get("LAKEBASE_INSTANCE_NAME")
+lakebase_database = dbutils.widgets.get("LAKEBASE_DATABASE_NAME")
+lakebase_schema = dbutils.widgets.get("LAKEBASE_SCHEMA_NAME")
+lakebase_port = 5432
 
 print(f"Configuration:")
 print(f"  App Name: {app_name}")
 print(f"  Instance: {instance_name}")
-print(f"  Host: {lakebase_host}")
 print(f"  Database: {lakebase_database}")
 print(f"  Schema: {lakebase_schema}")
 

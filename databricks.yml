@@ -47,7 +47,6 @@ variables:
 
 targets:
   dev:
-    mode: development
     default: true
     workspace:
       host: https://fe-vm-vdm-classic-rikfy0.cloud.databricks.com
@@ -67,10 +66,10 @@ targets:
             pause_status: UNPAUSED
       pipelines:
         silver_streaming_pipeline:
-          development: true
+          development: false
           continuous: false
         gold_aggregations_pipeline:
-          development: true
+          development: false
 
   dogfood:
     mode: development
