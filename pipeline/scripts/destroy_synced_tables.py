@@ -37,11 +37,16 @@ api_client = w.api_client
 # COMMAND ----------
 
 synced_tables_to_delete = [
+    # Current synced tables
     f"{catalog_name}.{schema_name}.metrics_1min_synced",
     f"{catalog_name}.{schema_name}.traces_silver_synced",
     f"{catalog_name}.{schema_name}.traces_assembled_synced",
     f"{catalog_name}.{schema_name}.logs_synced",
-    f"{catalog_name}.{schema_name}.service_dependencies_synced"
+    f"{catalog_name}.{schema_name}.service_dependencies_synced",
+    # Legacy synced tables (pre-migration)
+    f"{catalog_name}.{schema_name}.otel_logs_pg_synced",
+    f"{catalog_name}.{schema_name}.otel_metrics_pg_synced",
+    f"{catalog_name}.{schema_name}.otel_spans_pg_synced",
 ]
 
 print(f"🗑️  Deleting Synced Tables from {catalog_name}.{schema_name}...")
@@ -88,6 +93,35 @@ if deleted_tables:
     print(f"   This may take 1-2 minutes...\n")
     time.sleep(60)
     print(f"   ✅ Pipeline deletion should be complete\n")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 3b: Clean Up Orphaned Synced Table Pipelines
+
+# COMMAND ----------
+
+print("🔍 Searching for orphaned synced table pipelines...")
+try:
+    pipelines = w.pipelines.list_pipelines(filter=f'name LIKE "Synced table: {catalog_name}.{schema_name}.%"')
+    orphaned = []
+    for p in pipelines:
+        orphaned.append(p)
+        print(f"   Found: {p.name} ({p.pipeline_id})")
+
+    if orphaned:
+        print(f"\n🗑️  Deleting {len(orphaned)} orphaned pipeline(s)...")
+        for p in orphaned:
+            try:
+                w.pipelines.delete(pipeline_id=p.pipeline_id)
+                print(f"   ✅ Deleted pipeline: {p.pipeline_id}")
+            except Exception as e:
+                print(f"   ⚠️  Could not delete {p.pipeline_id}: {e}")
+    else:
+        print("   No orphaned pipelines found")
+    print()
+except Exception as e:
+    print(f"   ⚠️  Could not list pipelines: {e}\n")
 
 # COMMAND ----------
 
