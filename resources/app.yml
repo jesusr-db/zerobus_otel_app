@@ -8,6 +8,10 @@ resources:
         # command: ["uvicorn","server.app:app"]
         command: ["opentelemetry-instrument", "uvicorn", "server.app:app"]
         env:
+          - name: LAKEBASE_INSTANCE_NAME
+            value: ${var.database_instance_name}
+          - name: LAKEBASE_DATABASE_NAME
+            value: ${var.schema_name}
           - name: LAKEBASE_CATALOG_NAME
             value: ${var.schema_name}
           - name: LAKEBASE_SCHEMA_NAME
@@ -19,9 +23,4 @@ resources:
           sql_warehouse:
             id: ${var.warehouse_id}
             permission: CAN_USE
-        - name: lakebase-db
-          database:
-            database_name: ${var.schema_name}
-            instance_name: ${var.database_instance_name}
-            permission: CAN_CONNECT_AND_CREATE
 
