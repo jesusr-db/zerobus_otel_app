@@ -94,26 +94,78 @@ print("Credential generated successfully")
 
 # COMMAND ----------
 
-print(f"\nGranting instance-level access to SP: {sp_client_id}")
+# Add database resource binding to the app via API PATCH.
+# This is what enables the SP to authenticate to Lakebase via OAuth.
+# The resource binding is NOT in app.yml (which would block bundle deploy
+# when the instance doesn't exist yet). Instead, we add it dynamically here.
+print(f"\nAdding Lakebase resource binding to app: {app_name}")
 try:
-    # Grant CAN_USE on the Lakebase instance to the app's service principal
-    # Note: service_principal_name must be the client_id (UUID), not the display name
-    w.api_client.do(
-        'PATCH',
-        f'/api/2.0/permissions/database-instances/{instance_name}',
-        body={
-            "access_control_list": [
-                {
-                    "service_principal_name": sp_client_id,
-                    "permission_level": "CAN_USE"
-                }
-            ]
+    # Get current app resources to preserve them
+    current_resources = []
+    if app.resources:
+        for r in app.resources:
+            if r.sql_warehouse:
+                current_resources.append({
+                    "name": r.name,
+                    "sql_warehouse": {
+                        "id": r.sql_warehouse.id,
+                        "permission": r.sql_warehouse.permission.value
+                    }
+                })
+            elif r.database and r.name != "lakebase-db":
+                # Keep other database resources but skip our own (will re-add)
+                current_resources.append({
+                    "name": r.name,
+                    "database": {
+                        "database_name": r.database.database_name,
+                        "instance_name": r.database.instance_name,
+                        "permission": r.database.permission.value
+                    }
+                })
+
+    # Add the lakebase-db resource
+    current_resources.append({
+        "name": "lakebase-db",
+        "database": {
+            "database_name": lakebase_database,
+            "instance_name": instance_name,
+            "permission": "CAN_CONNECT_AND_CREATE"
         }
-    )
-    print(f"  ✅ Granted CAN_USE on instance '{instance_name}' to SP '{sp_client_id}'")
+    })
+
+    w.api_client.do('PATCH', f'/api/2.0/apps/{app_name}', body={
+        "resources": current_resources
+    })
+    print(f"  ✅ Added lakebase-db resource binding (instance={instance_name}, db={lakebase_database})")
 except Exception as e:
-    print(f"  ⚠️  Could not grant instance permission: {e}")
-    print(f"  The app SP may need manual access via the Lakebase UI")
+    print(f"  ❌ Failed to add resource binding: {e}")
+    raise
+
+# Redeploy the app so it picks up the new resource binding (PG* env vars)
+print(f"\n  🔄 Redeploying app to activate resource binding...")
+try:
+    deployment = w.apps.deploy(
+        app_name=app_name,
+        source_code_path=app.default_source_code_path
+    )
+    print(f"  ✅ Deployment triggered: {deployment.deployment_id}")
+
+    # Wait for deployment to succeed
+    import time as _time
+    for _ in range(30):
+        _time.sleep(10)
+        dep = w.apps.get_deployment(app_name=app_name, deployment_id=deployment.deployment_id)
+        state = dep.status.state.value if dep.status else "UNKNOWN"
+        print(f"     Deployment state: {state}")
+        if state == "SUCCEEDED":
+            print(f"  ✅ App redeployed with Lakebase resource binding")
+            break
+        elif state == "FAILED":
+            print(f"  ❌ Deployment failed: {dep.status.message}")
+            break
+except Exception as e:
+    print(f"  ⚠️  Could not redeploy app: {e}")
+    print(f"  Run 'databricks apps deploy o11y-jmr' manually")
 
 # COMMAND ----------
 
