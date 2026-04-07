@@ -87,6 +87,53 @@ print("Credential generated successfully")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Grant SP Access to Lakebase Instance
+# MAGIC
+# MAGIC Without a database resource binding in the app config, the SP needs
+# MAGIC explicit permission on the Lakebase instance to authenticate.
+
+# COMMAND ----------
+
+print(f"\nGranting instance-level access to SP: {sp_client_id}")
+try:
+    # Grant CAN_USE on the Lakebase instance to the app's service principal
+    w.api_client.do(
+        'PUT',
+        f'/api/2.0/permissions/database-instances/{instance_name}',
+        body={
+            "access_control_list": [
+                {
+                    "service_principal_name": sp_name,
+                    "all_permissions": [{"permission_level": "CAN_USE"}]
+                }
+            ]
+        }
+    )
+    print(f"  ✅ Granted CAN_USE on instance '{instance_name}' to SP '{sp_name}'")
+except Exception as e:
+    # Try alternative: patch permissions
+    print(f"  ⚠️  PUT failed ({e}), trying PATCH...")
+    try:
+        w.api_client.do(
+            'PATCH',
+            f'/api/2.0/permissions/database-instances/{instance_name}',
+            body={
+                "access_control_list": [
+                    {
+                        "service_principal_name": sp_name,
+                        "all_permissions": [{"permission_level": "CAN_USE"}]
+                    }
+                ]
+            }
+        )
+        print(f"  ✅ Granted CAN_USE on instance via PATCH")
+    except Exception as e2:
+        print(f"  ⚠️  Could not grant instance permission: {e2}")
+        print(f"  The app SP may need manual access via the Lakebase UI")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Connect to Lakebase and Grant Permissions
 
 # COMMAND ----------
@@ -120,14 +167,29 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
-# List existing roles to find the correct one for the app SP
+# Create role for the app SP if it doesn't exist
+# Lakebase uses the SP client_id as the PostgreSQL role name
+role_id = sp_client_id
+print(f"\nEnsuring role exists for SP: {role_id}")
+try:
+    cur.execute(f'CREATE ROLE "{role_id}" WITH LOGIN')
+    conn.commit()
+    print(f"  ✅ Created role: {role_id}")
+except Exception as e:
+    conn.rollback()
+    if "already exists" in str(e).lower():
+        print(f"  ✅ Role already exists: {role_id}")
+    else:
+        print(f"  ⚠️  Could not create role: {e}")
+
+# List existing roles
 print("\nListing database roles...")
 cur.execute("SELECT rolname FROM pg_roles ORDER BY rolname")
 roles = [row[0] for row in cur.fetchall()]
 print(f"  Found {len(roles)} roles")
 
-# Find matching role for our SP (could be client_id, sp_name, or prefixed)
-matching_roles = [r for r in roles if sp_client_id in r or (sp_name and sp_name.replace(' ', '') in r.replace(' ', ''))]
+# Find matching role for our SP
+matching_roles = [r for r in roles if sp_client_id in r]
 print(f"  Matching roles for SP: {matching_roles}")
 
 # Determine which role identifier to use
