@@ -118,7 +118,7 @@ class SpanWaterfall(BaseModel):
     duration_ms: float
     start_offset_ms: float
     parent_span_id: str | None
-    is_error: bool
+    is_error: bool = False
 
 
 class TraceWaterfall(BaseModel):

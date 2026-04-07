@@ -149,7 +149,7 @@ async def get_trace_waterfall(
                 duration_ms=duration_ms,
                 start_offset_ms=start_offset_ms,
                 parent_span_id=span.get('parent_span_id'),
-                is_error=is_error
+                is_error=bool(is_error)
             ))
 
         total_duration_ms = max_end_ms if max_end_ms > 0 else sum(s.duration_ms for s in spans)
