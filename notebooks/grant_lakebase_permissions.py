@@ -97,39 +97,23 @@ print("Credential generated successfully")
 print(f"\nGranting instance-level access to SP: {sp_client_id}")
 try:
     # Grant CAN_USE on the Lakebase instance to the app's service principal
+    # Note: service_principal_name must be the client_id (UUID), not the display name
     w.api_client.do(
-        'PUT',
+        'PATCH',
         f'/api/2.0/permissions/database-instances/{instance_name}',
         body={
             "access_control_list": [
                 {
-                    "service_principal_name": sp_name,
-                    "all_permissions": [{"permission_level": "CAN_USE"}]
+                    "service_principal_name": sp_client_id,
+                    "permission_level": "CAN_USE"
                 }
             ]
         }
     )
-    print(f"  ✅ Granted CAN_USE on instance '{instance_name}' to SP '{sp_name}'")
+    print(f"  ✅ Granted CAN_USE on instance '{instance_name}' to SP '{sp_client_id}'")
 except Exception as e:
-    # Try alternative: patch permissions
-    print(f"  ⚠️  PUT failed ({e}), trying PATCH...")
-    try:
-        w.api_client.do(
-            'PATCH',
-            f'/api/2.0/permissions/database-instances/{instance_name}',
-            body={
-                "access_control_list": [
-                    {
-                        "service_principal_name": sp_name,
-                        "all_permissions": [{"permission_level": "CAN_USE"}]
-                    }
-                ]
-            }
-        )
-        print(f"  ✅ Granted CAN_USE on instance via PATCH")
-    except Exception as e2:
-        print(f"  ⚠️  Could not grant instance permission: {e2}")
-        print(f"  The app SP may need manual access via the Lakebase UI")
+    print(f"  ⚠️  Could not grant instance permission: {e}")
+    print(f"  The app SP may need manual access via the Lakebase UI")
 
 # COMMAND ----------
 
