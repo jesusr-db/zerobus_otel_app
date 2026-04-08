@@ -84,7 +84,7 @@ targets:
       catalog_name: main
       schema_name: dev_jesus_rodriguez_jmr_demo
       warehouse_id: "dd43ee29fedd958d"
-      database_instance_name: "zerobus-otel"
+      database_instance_name: "zerobus-otel-jmr"
       database_host_name: "ep-small-breeze-y1hvqfgb.database.us-west-2.staging.cloud.databricks.com"
 
     resources:
