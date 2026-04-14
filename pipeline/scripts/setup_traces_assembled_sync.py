@@ -2,10 +2,11 @@
 # MAGIC %md
 # MAGIC # Setup Traces Assembled Synced Table
 # MAGIC
-# MAGIC Creates a SNAPSHOT synced table for traces_assembled with hourly refresh.
+# MAGIC Creates a CONTINUOUS synced table for traces_assembled.
 # MAGIC
-# MAGIC **Note**: SNAPSHOT mode is required for MATERIALIZED_VIEW sources (DLT batch tables).
-# MAGIC This runs as a separate pipeline from the CONTINUOUS synced tables.
+# MAGIC **Note**: The gold pipeline now runs in streaming mode, producing STREAMING_TABLE
+# MAGIC types instead of MATERIALIZED_VIEW. This enables CONTINUOUS sync (real-time
+# MAGIC replication) instead of the previous SNAPSHOT mode with hourly cron.
 
 # COMMAND ----------
 
@@ -39,8 +40,7 @@ source_table = f"{catalog_name}.{schema_name}.traces_assembled"
 print(f"Setting up synced table: {table_name}")
 print(f"   Source: {source_table}")
 print(f"   Primary Key: trace_id")
-print(f"   Scheduling: SNAPSHOT (required for MATERIALIZED_VIEW)")
-print(f"   Refresh: Every hour")
+print(f"   Scheduling: CONTINUOUS (real-time sync from streaming gold table)")
 print(f"   Database Instance: {database_instance_name}")
 
 # COMMAND ----------
@@ -116,7 +116,7 @@ if needs_recreation and existing_table:
 if existing_table is None or needs_recreation:
     print(f"\nCreating synced table: {table_name}")
 
-    # SNAPSHOT spec with hourly cron schedule
+    # CONTINUOUS spec -- real-time sync from streaming gold table
     synced_table_spec = {
         "name": table_name,
         "database_instance_name": database_instance_name,
@@ -124,13 +124,7 @@ if existing_table is None or needs_recreation:
         "spec": {
             "source_table_full_name": source_table,
             "primary_key_columns": ["trace_id"],
-            "scheduling_policy": "SNAPSHOT",
-            "snapshot_schedule": {
-                "cron_schedule": {
-                    "quartz_cron_expression": "0 0 * * * ?",  # Every hour
-                    "timezone_id": "UTC"
-                }
-            },
+            "scheduling_policy": "CONTINUOUS",
             "new_pipeline_spec": {
                 "storage_catalog": catalog_name,
                 "storage_schema": schema_name

@@ -18,69 +18,65 @@ A production-grade observability platform built entirely on Databricks, providin
 git clone <repo-url> && cd o11yApp
 
 # Edit bundle variables for your environment
-# Update catalog_name, schema_name, database_instance_name, warehouse_id
 vim databricks.yml
 ```
 
-### 2. Deploy with Databricks Asset Bundles
+Key variables in `databricks.yml`:
+
+| Variable | Description |
+|----------|-------------|
+| `catalog_name` | Unity Catalog name for observability tables |
+| `schema_name` | Schema name for observability tables |
+| `database_instance_name` | Lakebase (managed PostgreSQL) instance name |
+| `warehouse_id` | SQL Warehouse ID for queries |
+| `pipeline_mode` | `"streaming"` (continuous real-time) or `"scheduled"` (batch with cron) |
+
+### 2. Deploy
 
 ```bash
 # Authenticate to your workspace
 databricks auth login --host https://<workspace-url>
 
-# Validate the bundle configuration
+# Validate and deploy all resources (app, pipelines, jobs)
 databricks bundle validate -t dev
-
-# Deploy all resources (app, pipelines, jobs)
 databricks bundle deploy -t dev
 ```
 
 ### 3. Run the setup job
 
-The `full_pipeline_setup` job provisions the entire backend in the correct order:
-
 ```bash
-# Trigger the full setup job
 databricks bundle run full_pipeline_setup -t dev
 ```
 
-This job executes the following task graph:
+This single job handles everything — starts pipelines, creates synced tables, and grants permissions:
 
 ```
-run_silver_pipeline
-        |
-        ├──> run_gold_pipeline ──┐
-        |                        ├──> sync_service_dependencies
-        └──> setup_synced_tables ├──> sync_traces_assembled
-                        |        
-                        └──> grant_app_permissions
+ensure_silver_running ──> ensure_gold_running ──┐
+        |                                       ├──> sync_service_dependencies ──┐
+        └──> setup_synced_tables ───────────────├──> sync_traces_assembled ──────├──> grant_app_permissions
 ```
 
-**What it does:**
-1. Runs the Silver DLT pipeline (flatten and enrich raw OTel data)
-2. Runs the Gold DLT pipeline (aggregate dependencies, metrics, baselines)
-3. Creates Lakebase synced tables (reverse ETL from Delta to PostgreSQL)
-4. Syncs gold-layer tables (service dependencies, assembled traces)
-5. Grants the Databricks App service principal access to Lakebase
+The job is **idempotent** — safe to re-run at any time. Pipelines that are already running are skipped. Once started, both DLT pipelines run continuously.
 
 ### 4. Open the app
 
 ```bash
-# Check app status and get the URL
 databricks apps get o11y-jmr --output json | jq -r '.url'
 ```
 
 Navigate to the URL in your browser. Databricks OAuth handles authentication automatically.
 
-### Scheduled refresh
+> **Permissions error?** If the dashboard shows `permission denied` on Lakebase tables, re-run the setup job: `databricks bundle run full_pipeline_setup -t dev`. This re-grants `SELECT` on all synced tables to the app's service principal.
 
-The `dev_job` runs on a configurable schedule (default: every 30 minutes) to keep data fresh:
+### Teardown
 
+```bash
+# Destroy synced tables only (keeps Delta source tables and pipelines intact)
+databricks bundle run destroy_synced_tables -t dev
+
+# Destroy everything (app, pipelines, jobs) — Delta source tables are NOT deleted
+databricks bundle destroy -t dev
 ```
-Silver pipeline -> Gold pipeline -> Sync dependencies -> Sync traces
-```
-
-Adjust the schedule in `databricks.yml` under the target's `dev_job` resource.
 
 ---
 

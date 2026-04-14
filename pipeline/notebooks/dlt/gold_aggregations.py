@@ -3,22 +3,21 @@
 # MAGIC # Gold Layer - Aggregations and Analytics
 # MAGIC
 # MAGIC Gold layer tables for business intelligence, reporting, and anomaly detection.
+# MAGIC Supports **streaming** (continuous) and **scheduled** (batch) modes via `pipeline_mode` config.
 # MAGIC
 # MAGIC **Inputs**:
-# MAGIC - `{catalog}.zerobus_sdp.traces_silver`
-# MAGIC - `{catalog}.zerobus_sdp.metrics_silver`
+# MAGIC - `{catalog}.zerobus_sdp.traces_silver` (streaming or batch read)
 # MAGIC
 # MAGIC **Outputs**:
-# MAGIC - `{catalog}.zerobus_sdp.traces_assembled` (moved from silver - batch aggregation)
-# MAGIC - `{catalog}.zerobus_sdp.service_health_5min`
-# MAGIC - `{catalog}.zerobus_sdp.service_health_hourly`
-# MAGIC - `{catalog}.zerobus_sdp.service_dependencies`
-# MAGIC - `{catalog}.zerobus_sdp.anomaly_baselines`
+# MAGIC - `{catalog}.zerobus_sdp.service_health_5min` (streaming or batch)
+# MAGIC - `{catalog}.zerobus_sdp.service_health_hourly` (streaming or batch)
+# MAGIC - `{catalog}.zerobus_sdp.service_dependencies` (always batch - periodic snapshot of dependency graph)
+# MAGIC - `{catalog}.zerobus_sdp.traces_assembled` (streaming or batch)
+# MAGIC - `{catalog}.zerobus_sdp.anomaly_baselines` (always batch - 7-day statistical window)
 # MAGIC
-# MAGIC **Note**:
-# MAGIC - Service health metrics are computed directly from traces_silver with 5-minute windows
-# MAGIC - This replaces the previous service_health_realtime (1-minute) approach
-# MAGIC - 80% fewer rows, single-pass percentile computation, statistically correct aggregations
+# MAGIC **Mode selection**: Set `pipeline_mode` in pipeline configuration:
+# MAGIC - `"streaming"` (default): All tables use readStream with watermarks, pipeline runs continuously
+# MAGIC - `"scheduled"`: All tables use batch reads with time filters, pipeline triggered by job
 
 # COMMAND ----------
 
@@ -30,13 +29,17 @@ from pyspark.sql.window import Window
 # Get configuration from pipeline settings
 catalog_name = spark.conf.get("catalog_name", "jmr_demo")
 schema_name = spark.conf.get("schema_name", "zerobus_sdp")
+pipeline_mode = spark.conf.get("pipeline_mode", "streaming")
+is_streaming = pipeline_mode == "streaming"
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Service Health 5-Minute Windows
 # MAGIC
-# MAGIC Direct computation from traces_silver with 5-minute windows.
+# MAGIC Streaming computation from traces_silver with 5-minute tumbling windows.
+# MAGIC
+# MAGIC Supports both streaming (continuous) and batch (scheduled) modes via `pipeline_mode` config.
 # MAGIC
 # MAGIC Key improvements:
 # MAGIC - 80% fewer rows than 1-minute windows (288 vs 1,440 rows/day per service)
@@ -48,7 +51,7 @@ schema_name = spark.conf.get("schema_name", "zerobus_sdp")
 
 @dlt.table(
     name="service_health_5min",
-    comment="5-minute service health metrics computed directly from traces (replaces service_health_realtime)",
+    comment="5-minute service health metrics computed directly from traces",
     table_properties={
         "quality": "gold",
         "pipelines.autoOptimize.managed": "true",
@@ -57,18 +60,27 @@ schema_name = spark.conf.get("schema_name", "zerobus_sdp")
 )
 def service_health_5min():
     """
-    Direct computation from traces_silver with 5-minute windows.
+    Streaming or batch computation from traces_silver with 5-minute windows.
+    Mode controlled by pipeline_mode config variable.
     """
-    # Read from traces_silver (cross-pipeline reference)
-    # Use 90 days to capture historical data
-    traces = spark.read.table(f"{catalog_name}.{schema_name}.traces_silver").filter(
-        col("start_timestamp") >= current_timestamp() - expr("INTERVAL 90 DAYS")
-    )
+    source_table = f"{catalog_name}.{schema_name}.traces_silver"
+
+    if is_streaming:
+        traces = (
+            spark.readStream.table(source_table)
+            .withWatermark("start_timestamp", "10 minutes")
+        )
+    else:
+        traces = spark.read.table(source_table).filter(
+            col("start_timestamp") >= current_timestamp() - expr("INTERVAL 90 DAYS")
+        )
 
     return (
         traces
-        .withColumn("window_5min", date_trunc("5 minutes", col("start_timestamp")))
-        .groupBy("service_name", "window_5min")
+        .groupBy(
+            "service_name",
+            window("start_timestamp", "5 minutes")
+        )
         .agg(
             # Error rate calculation
             (sum(when(col("is_error") == True, 1).otherwise(0)) / count("*")).alias("error_rate"),
@@ -84,9 +96,10 @@ def service_health_5min():
             min("duration_ms").alias("min_latency_ms"),
             max("duration_ms").alias("max_latency_ms")
         )
+        .withColumn("timestamp", col("window.start"))
         .withColumn("ingestion_timestamp", current_timestamp())
         .select(
-            col("window_5min").alias("timestamp"),
+            "timestamp",
             "service_name",
             "error_rate",
             "p50_latency_ms",
@@ -105,10 +118,7 @@ def service_health_5min():
 # MAGIC %md
 # MAGIC ## Service Health Hourly Rollups
 # MAGIC
-# MAGIC Aggregate 5-minute windows to hourly.
-# MAGIC
-# MAGIC Note: We compute percentiles from the 12 5-min windows per hour.
-# MAGIC This is more accurate than averaging pre-computed percentiles.
+# MAGIC Aggregate 5-minute windows to hourly using streaming or batch mode.
 
 # COMMAND ----------
 
@@ -123,23 +133,30 @@ def service_health_5min():
 def service_health_hourly():
     """
     Aggregate 5-minute windows to hourly.
+    Streaming mode chains from service_health_5min via dlt.read_stream.
     """
-    # Read from service_health_5min table in the same pipeline
-    service_health_5min = dlt.read("service_health_5min").filter(
-        col("timestamp") >= current_timestamp() - expr("INTERVAL 30 DAYS")
-    )
+    if is_streaming:
+        health_5min = (
+            dlt.read_stream("service_health_5min")
+            .withWatermark("timestamp", "70 minutes")
+        )
+    else:
+        health_5min = dlt.read("service_health_5min").filter(
+            col("timestamp") >= current_timestamp() - expr("INTERVAL 30 DAYS")
+        )
 
     return (
-        service_health_5min
-        .withColumn("hour", date_trunc("hour", col("timestamp")))
-        .groupBy("service_name", "hour")
+        health_5min
+        .groupBy(
+            "service_name",
+            window("timestamp", "1 hour")
+        )
         .agg(
             # Weighted average for error rate (by request count)
             sum(col("error_rate") * col("total_requests")).alias("weighted_error_sum"),
             sum("total_requests").alias("total_requests"),
 
             # For percentiles: use max of 5-min p95/p99 as approximation
-            # Better than average, conservative upper bound
             max("p95_latency_ms").alias("p95_latency_ms"),
             max("p99_latency_ms").alias("p99_latency_ms"),
 
@@ -148,6 +165,7 @@ def service_health_hourly():
             max("max_latency_ms").alias("max_latency_ms"),
             min("min_latency_ms").alias("min_latency_ms")
         )
+        .withColumn("hour", col("window.start"))
         .withColumn("error_rate", col("weighted_error_sum") / col("total_requests"))
         .withColumn("ingestion_timestamp", current_timestamp())
         .select(
@@ -174,41 +192,37 @@ def service_health_hourly():
     comment="Service-to-service dependency graph with call counts and activity timestamps",
     table_properties={
         "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
+        "pipelines.autoOptimize.managed": "true",
+        "delta.enableChangeDataFeed": "true"
     }
 )
 def service_dependencies():
     """
     Build service-to-service dependency graph from parent-child span relationships.
 
-    Columns:
-    - first_seen/last_seen: When this specific dependency was observed (parent-child relationship)
-    - last_active: Most recent trace involving either source or target service (any trace, not just dependencies)
+    Always runs in batch mode regardless of pipeline_mode setting.
+    The dependency graph is a periodic snapshot (one row per service pair),
+    not a streaming append. In a continuous pipeline, DLT refreshes this
+    periodically as a materialized view.
 
-    Note: Requires traces to have parent_span_id populated for nested calls.
-    If no results, check:
-    1. Do traces have parent_span_id? (Run: SELECT COUNT(*) FROM traces_silver WHERE parent_span_id IS NOT NULL)
-    2. Do parent-child relationships exist within same trace_id?
-    3. Is there data in the time window?
+    Columns:
+    - first_seen/last_seen: When this dependency was observed
+    - call_count/unique_traces: Running totals of calls and traces
     """
-    # Read from silver layer table created by another pipeline
-    # Use 90 days to capture historical data for dependency detection
-    traces = spark.read.table(f"{catalog_name}.{schema_name}.traces_silver").filter(
+    source_table = f"{catalog_name}.{schema_name}.traces_silver"
+
+    traces = spark.read.table(source_table).filter(
         col("start_timestamp") >= current_timestamp() - expr("INTERVAL 90 DAYS")
     )
 
-    # Get last activity timestamp per service (from ALL traces, not just parent-child)
     service_last_active = (
         traces
         .groupBy("service_name")
         .agg(max("start_timestamp").alias("service_last_active"))
     )
 
-    # Filter to only child spans (those with a parent)
     child_spans = traces.filter(col("parent_span_id").isNotNull()).alias("child")
 
-    # Self-join to find parent spans
-    # Note: This assumes parent and child are in the same trace_id
     dependencies = (
         child_spans
         .join(
@@ -223,11 +237,8 @@ def service_dependencies():
             col("child.trace_id").alias("trace_id"),
             col("child.start_timestamp").alias("call_timestamp")
         )
-        # Include both cross-service and same-service calls
-        # Filter out if needed: .filter(col("source_service") != col("target_service"))
     )
 
-    # Aggregate dependencies
     deps_aggregated = (
         dependencies
         .groupBy("source_service", "target_service")
@@ -239,7 +250,6 @@ def service_dependencies():
         )
     )
 
-    # Join with service activity to get last_active for source and target
     result = (
         deps_aggregated
         .join(
@@ -256,7 +266,6 @@ def service_dependencies():
         )
         .withColumn("target_last_active", col("tgt_activity.service_last_active"))
         .drop("service_name", "service_last_active")
-        # last_active = max of source and target last activity
         .withColumn("last_active", greatest("source_last_active", "target_last_active"))
         .withColumn("ingestion_timestamp", current_timestamp())
         .select(
@@ -278,89 +287,151 @@ def service_dependencies():
 # MAGIC %md
 # MAGIC ## Traces Assembled
 # MAGIC
-# MAGIC Batch aggregation of traces from traces_silver.
+# MAGIC Streaming or batch aggregation of traces from traces_silver.
 # MAGIC
-# MAGIC **Moved from silver streaming pipeline** to fix:
-# MAGIC - Watermark dropping late data (was 2 minutes - too aggressive)
-# MAGIC - 5-minute window grouping splitting traces incorrectly
+# MAGIC **History**: Was originally streaming in silver but moved to batch due to:
+# MAGIC - 2-minute watermark dropping late-arriving spans (too aggressive)
+# MAGIC - 5-minute window grouping splitting traces across rows
 # MAGIC
-# MAGIC Now groups by trace_id only (one row per trace).
+# MAGIC **Fix**: Now uses 15-minute watermark (handles late spans) and groups by
+# MAGIC trace_id within a 15-minute tumbling window (keeps traces together without
+# MAGIC unbounded state).
 
 # COMMAND ----------
 
 @dlt.table(
     name="traces_assembled",
-    comment="Assembled traces with aggregated span information - batch computed from traces_silver",
+    comment="Assembled traces with aggregated span information",
     table_properties={
         "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
+        "pipelines.autoOptimize.managed": "true",
+        "delta.enableChangeDataFeed": "true"
     }
 )
 def traces_assembled():
     """
-    Batch aggregation of traces - no watermark issues, no window splitting.
+    Streaming or batch aggregation of traces.
 
-    Groups by trace_id only (not time window) so each trace is one row.
-    Lookback window is configurable - default 24 hours for recent traces.
+    Streaming mode: Uses 15-minute watermark (vs old 2-min that dropped data)
+    and groups by trace_id within a 15-minute window to bound state while
+    keeping most trace spans together.
+
+    Batch mode: 24-hour lookback, groups by trace_id only.
     """
-    traces = spark.read.table(f"{catalog_name}.{schema_name}.traces_silver").filter(
-        col("start_timestamp") >= current_timestamp() - expr("INTERVAL 24 HOURS")
-    )
+    source_table = f"{catalog_name}.{schema_name}.traces_silver"
 
-    return (
-        traces
-        .groupBy("trace_id")
-        .agg(
-            count("*").alias("span_count"),
-            min("start_timestamp").alias("trace_start"),
-            max("end_timestamp").alias("trace_end"),
-            collect_set("service_name").alias("services_involved"),
-            sum(col("is_error").cast("int")).alias("error_count"),
-            max("duration_ms").alias("max_span_duration_ms"),
-            avg("duration_ms").alias("avg_span_duration_ms"),
-            collect_list(
-                struct(
-                    "span_id",
-                    "parent_span_id",
-                    "name",
-                    "kind",
-                    "service_name",
-                    "duration_ms",
-                    "is_error"
-                )
-            ).alias("span_details")
+    if is_streaming:
+        traces = (
+            spark.readStream.table(source_table)
+            .withWatermark("start_timestamp", "15 minutes")
         )
-        .withColumn("has_errors", col("error_count") > 0)
-        .withColumn("total_trace_duration_ms",
-                    (unix_timestamp("trace_end") - unix_timestamp("trace_start")) * 1000)
-        .withColumn("service_count", size("services_involved"))
-        .withColumn("ingestion_timestamp", current_timestamp())
-        .select(
-            "trace_id",
-            "span_count",
-            "trace_start",
-            "trace_end",
-            "total_trace_duration_ms",
-            "services_involved",
-            "service_count",
-            "error_count",
-            "has_errors",
-            "max_span_duration_ms",
-            "avg_span_duration_ms",
-            "span_details",
-            "ingestion_timestamp"
+
+        return (
+            traces
+            .groupBy(
+                "trace_id",
+                window("start_timestamp", "15 minutes")
+            )
+            .agg(
+                count("*").alias("span_count"),
+                min("start_timestamp").alias("trace_start"),
+                max("end_timestamp").alias("trace_end"),
+                collect_set("service_name").alias("services_involved"),
+                sum(col("is_error").cast("int")).alias("error_count"),
+                max("duration_ms").alias("max_span_duration_ms"),
+                avg("duration_ms").alias("avg_span_duration_ms"),
+                collect_list(
+                    struct(
+                        "span_id",
+                        "parent_span_id",
+                        "name",
+                        "kind",
+                        "service_name",
+                        "duration_ms",
+                        "is_error"
+                    )
+                ).alias("span_details")
+            )
+            .withColumn("has_errors", col("error_count") > 0)
+            .withColumn("total_trace_duration_ms",
+                        (unix_timestamp("trace_end") - unix_timestamp("trace_start")) * 1000)
+            .withColumn("service_count", size("services_involved"))
+            .withColumn("ingestion_timestamp", current_timestamp())
+            .select(
+                "trace_id",
+                "span_count",
+                "trace_start",
+                "trace_end",
+                "total_trace_duration_ms",
+                "services_involved",
+                "service_count",
+                "error_count",
+                "has_errors",
+                "max_span_duration_ms",
+                "avg_span_duration_ms",
+                "span_details",
+                "ingestion_timestamp"
+            )
         )
-    )
+    else:
+        traces = spark.read.table(source_table).filter(
+            col("start_timestamp") >= current_timestamp() - expr("INTERVAL 24 HOURS")
+        )
+
+        return (
+            traces
+            .groupBy("trace_id")
+            .agg(
+                count("*").alias("span_count"),
+                min("start_timestamp").alias("trace_start"),
+                max("end_timestamp").alias("trace_end"),
+                collect_set("service_name").alias("services_involved"),
+                sum(col("is_error").cast("int")).alias("error_count"),
+                max("duration_ms").alias("max_span_duration_ms"),
+                avg("duration_ms").alias("avg_span_duration_ms"),
+                collect_list(
+                    struct(
+                        "span_id",
+                        "parent_span_id",
+                        "name",
+                        "kind",
+                        "service_name",
+                        "duration_ms",
+                        "is_error"
+                    )
+                ).alias("span_details")
+            )
+            .withColumn("has_errors", col("error_count") > 0)
+            .withColumn("total_trace_duration_ms",
+                        (unix_timestamp("trace_end") - unix_timestamp("trace_start")) * 1000)
+            .withColumn("service_count", size("services_involved"))
+            .withColumn("ingestion_timestamp", current_timestamp())
+            .select(
+                "trace_id",
+                "span_count",
+                "trace_start",
+                "trace_end",
+                "total_trace_duration_ms",
+                "services_involved",
+                "service_count",
+                "error_count",
+                "has_errors",
+                "max_span_duration_ms",
+                "avg_span_duration_ms",
+                "span_details",
+                "ingestion_timestamp"
+            )
+        )
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Anomaly Detection Baselines
 # MAGIC
-# MAGIC Compute baselines from 5-minute data.
+# MAGIC Compute baselines from 5-minute data. Always runs in batch mode regardless of
+# MAGIC pipeline_mode setting -- a 7-day statistical window doesn't benefit from streaming.
 # MAGIC
-# MAGIC Using 5-min windows gives us 2,016 data points per week per service,
-# MAGIC which is statistically robust for baseline computation.
+# MAGIC In a continuous pipeline, this becomes a materialized view that refreshes periodically.
 
 # COMMAND ----------
 
@@ -375,9 +446,14 @@ def traces_assembled():
 def anomaly_baselines():
     """
     Compute baselines from 5-minute data.
+    Always batch: reads the materialized service_health_5min table directly,
+    not via streaming. In continuous mode, DLT refreshes this periodically.
     """
-    # Read from service_health_5min table in the same pipeline
-    service_health_5min = dlt.read("service_health_5min").filter(
+    # Always use batch read from the underlying table -- 7-day aggregation
+    # is not suitable for streaming
+    service_health_5min = spark.read.table(
+        f"{catalog_name}.{schema_name}.service_health_5min"
+    ).filter(
         col("timestamp") >= current_timestamp() - expr("INTERVAL 7 DAYS")
     )
 

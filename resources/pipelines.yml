@@ -52,6 +52,7 @@ resources:
       configuration:
         catalog_name: ${var.catalog_name}
         schema_name: ${var.schema_name}
+        pipeline_mode: ${var.pipeline_mode}
 
       continuous: false
 

@@ -68,16 +68,23 @@ resources:
         usecase: otel
 
     # =======================================================================
-    # FULL PIPELINE SETUP (On-demand)
-    # Runs complete pipeline setup:
-    # 1. Silver pipeline -> Gold pipeline
-    # 2. Setup synced tables (parallel with pipelines)
-    # 3. Sync service_dependencies & traces_assembled to Lakebase
+    # FULL PIPELINE SETUP (On-demand, idempotent)
+    # Ensures continuous pipelines are running (starts them if not),
+    # sets up synced tables, and grants app permissions.
+    #
+    #   ensure_silver_running ──> ensure_gold_running ──┐
+    #              |                                     ├──> sync_service_dependencies ──┐
+    #              └──> setup_synced_tables ─────────────├──> sync_traces_assembled ──────├──> grant_app_permissions
     # =======================================================================
     full_pipeline_setup:
       name: "[${bundle.target}] Full Pipeline Setup"
 
       environments:
+        - environment_key: pipeline_env
+          spec:
+            client: "1"
+            dependencies:
+              - databricks-sdk>=0.35.0
         - environment_key: synced_tables_env
           spec:
             client: "1"
@@ -91,23 +98,29 @@ resources:
               - psycopg2-binary
 
       tasks:
-        # Phase 1: Run pipelines
-        - task_key: run_silver_pipeline
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
-            full_refresh: false
+        # Phase 1: Ensure continuous pipelines are running (no-op if already running)
+        - task_key: ensure_silver_running
+          environment_key: pipeline_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/ensure_pipeline_running.py
+            base_parameters:
+              pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
+              pipeline_name: "Silver Streaming Pipeline"
 
-        - task_key: run_gold_pipeline
+        - task_key: ensure_gold_running
           depends_on:
-            - task_key: run_silver_pipeline
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
-            full_refresh: false
+            - task_key: ensure_silver_running
+          environment_key: pipeline_env
+          notebook_task:
+            notebook_path: ../pipeline/scripts/ensure_pipeline_running.py
+            base_parameters:
+              pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
+              pipeline_name: "Gold Aggregations Pipeline"
 
-        # Phase 2: Setup synced tables (after silver creates source tables)
+        # Phase 2: Setup synced tables (needs silver tables to exist)
         - task_key: setup_synced_tables
           depends_on:
-            - task_key: run_silver_pipeline
+            - task_key: ensure_silver_running
           environment_key: synced_tables_env
           notebook_task:
             notebook_path: ../pipeline/scripts/setup_synced_tables.py
@@ -116,10 +129,10 @@ resources:
               catalog_name: "${var.catalog_name}"
               schema_name: "${var.schema_name}"
 
-        # Phase 3: Sync gold tables + grant app permissions
+        # Phase 3: Sync gold tables (after gold pipeline + synced tables)
         - task_key: sync_service_dependencies
           depends_on:
-            - task_key: run_gold_pipeline
+            - task_key: ensure_gold_running
             - task_key: setup_synced_tables
           environment_key: synced_tables_env
           notebook_task:
@@ -131,7 +144,7 @@ resources:
 
         - task_key: sync_traces_assembled
           depends_on:
-            - task_key: run_gold_pipeline
+            - task_key: ensure_gold_running
             - task_key: setup_synced_tables
           environment_key: synced_tables_env
           notebook_task:
@@ -141,9 +154,11 @@ resources:
               catalog_name: "${var.catalog_name}"
               schema_name: "${var.schema_name}"
 
+        # Phase 4: Grant permissions (after ALL synced tables are created)
         - task_key: grant_app_permissions
           depends_on:
-            - task_key: setup_synced_tables
+            - task_key: sync_service_dependencies
+            - task_key: sync_traces_assembled
           environment_key: grant_env
           notebook_task:
             notebook_path: ../notebooks/grant_lakebase_permissions.py
@@ -163,8 +178,9 @@ resources:
         usecase: otel
 
     # =======================================================================
-    # DEV JOB (Hourly)
-    # Runs silver -> gold -> lakebase sync pipeline every hour
+    # DEV JOB (Scheduled health check)
+    # Pipelines run continuously. This job only ensures synced tables
+    # exist and are healthy.
     # =======================================================================
     dev_job:
       name: "[${bundle.target}] Dev Pipeline"
@@ -182,21 +198,7 @@ resources:
               - databricks-sdk>=0.35.0
 
       tasks:
-        - task_key: run_silver_pipeline
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.silver_streaming_pipeline.id}
-            full_refresh: false
-
-        - task_key: run_gold_pipeline
-          depends_on:
-            - task_key: run_silver_pipeline
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.gold_aggregations_pipeline.id}
-            full_refresh: false
-
         - task_key: sync_service_dependencies
-          depends_on:
-            - task_key: run_gold_pipeline
           environment_key: synced_tables_env
           notebook_task:
             notebook_path: ../pipeline/scripts/setup_service_dependencies_sync.py
@@ -206,8 +208,6 @@ resources:
               schema_name: "${var.schema_name}"
 
         - task_key: sync_traces_assembled
-          depends_on:
-            - task_key: run_gold_pipeline
           environment_key: synced_tables_env
           notebook_task:
             notebook_path: ../pipeline/scripts/setup_traces_assembled_sync.py

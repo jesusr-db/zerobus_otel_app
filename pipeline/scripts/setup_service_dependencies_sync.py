@@ -2,10 +2,12 @@
 # MAGIC %md
 # MAGIC # Setup Service Dependencies Synced Table
 # MAGIC
-# MAGIC Creates a SNAPSHOT synced table for service_dependencies with 3-hour refresh schedule.
+# MAGIC Creates a SNAPSHOT synced table for service_dependencies with a periodic schedule.
 # MAGIC
-# MAGIC **Note**: SNAPSHOT mode is required for MATERIALIZED_VIEW sources (DLT tables).
-# MAGIC This runs as a separate pipeline from the CONTINUOUS synced tables.
+# MAGIC **Note**: The service_dependencies table is always computed in batch mode (periodic
+# MAGIC snapshot of the dependency graph), regardless of the pipeline_mode setting.
+# MAGIC This means it's a MATERIALIZED_VIEW, not a STREAMING_TABLE, so the sync uses
+# MAGIC SNAPSHOT scheduling with a 1-hour cron.
 
 # COMMAND ----------
 
@@ -39,8 +41,7 @@ source_table = f"{catalog_name}.{schema_name}.service_dependencies"
 print(f"📦 Setting up synced table: {table_name}")
 print(f"   └─ Source: {source_table}")
 print(f"   └─ Primary Keys: source_service, target_service")
-print(f"   └─ Scheduling: SNAPSHOT (required for MATERIALIZED_VIEW)")
-print(f"   └─ Refresh: Every 3 hours")
+print(f"   └─ Scheduling: SNAPSHOT (hourly cron from batch gold table)")
 print(f"   └─ Database Instance: {database_instance_name}")
 
 # COMMAND ----------
@@ -116,7 +117,7 @@ if needs_recreation and existing_table:
 if existing_table is None or needs_recreation:
     print(f"\n🚀 Creating synced table: {table_name}")
 
-    # SNAPSHOT spec with 3-hour cron schedule
+    # SNAPSHOT spec -- periodic sync from batch gold table
     synced_table_spec = {
         "name": table_name,
         "database_instance_name": database_instance_name,
@@ -125,12 +126,7 @@ if existing_table is None or needs_recreation:
             "source_table_full_name": source_table,
             "primary_key_columns": ["source_service", "target_service"],
             "scheduling_policy": "SNAPSHOT",
-            "snapshot_schedule": {
-                "cron_schedule": {
-                    "quartz_cron_expression": "0 0 */3 * * ?",  # Every 3 hours
-                    "timezone_id": "UTC"
-                }
-            },
+            "cron_schedule": "0 * * * *",
             "new_pipeline_spec": {
                 "storage_catalog": catalog_name,
                 "storage_schema": schema_name

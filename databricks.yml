@@ -44,6 +44,9 @@ variables:
   checkpoint_location:
     description: Checkpoint location for streaming pipelines
     default: "/Volumes/jmr_demo/zerobus/checkpoints/service_health"
+  pipeline_mode:
+    description: Pipeline execution mode - "streaming" for continuous real-time or "scheduled" for batch with cron
+    default: "streaming"
 
 targets:
   dev:
@@ -67,9 +70,10 @@ targets:
       pipelines:
         silver_streaming_pipeline:
           development: false
-          continuous: false
+          continuous: true
         gold_aggregations_pipeline:
           development: false
+          continuous: true
 
   dogfood:
     mode: development
@@ -98,6 +102,7 @@ targets:
           continuous: true
         gold_aggregations_pipeline:
           development: true
+          continuous: true
 
   prod:
     mode: production
